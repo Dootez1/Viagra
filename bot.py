@@ -19,6 +19,8 @@ from aiogram.types import (
     InputTextMessageContent,
     Message,
     CallbackQuery,
+    FSInputFile,
+    InputMediaPhoto,
 )
 
 import database as db
@@ -32,6 +34,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "HypedDealsSupport").strip().lstrip("@")
 REVIEWS_CHANNEL = os.getenv("REVIEWS_CHANNEL", "HypedDealsReviews").strip().lstrip("@")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "HypedDeaIsBot").strip().lstrip("@")
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo", "photo_2026-11-11_21-48-59.jpg")
 
 # Логирование
 logging.basicConfig(
@@ -2200,56 +2204,395 @@ async def show_profile(callback: CallbackQuery):
     username_str = f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь")
 
     if lang == "en":
-        text = (
-            f"👤 <b>User Profile</b>\n\n"
+        caption = (
+            f"👤 <b>User Profile — Hyped Deals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Username:</b> {username_str}\n"
             f"📈 <b>Completed deals:</b> <b>{completed}</b>\n\n"
-            f"💰 <b>Balances:</b>\n"
-            f"💳 RUB: {rub:.2f}\n"
-            f"🇺🇦 UAH: {uah:.2f}\n"
-            f"🇧🇾 BYN: {byn:.2f}\n"
-            f"🇰🇿 KZT: {kzt:.2f}\n"
-            f"💎 GRAM: {gram:.2f}\n"
-            f"💵 USDT: {usdt:.2f}\n"
-            f"⭐ Stars: {stars:.2f}\n\n"
-            f"👥 <b>Referral Program:</b>\n"
-            f"• Invited users: <b>{ref_count}</b>\n"
-            f"• Reward: <b>50%</b> of service fees\n"
-            f"🔗 <b>Your referral link:</b>\n<code>{ref_link}</code>"
+            f"💰 <b>Your balances:</b>\n"
+            f"💳 RUB: <b>{rub:.2f}</b>\n"
+            f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
+            f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
+            f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"
+            f"💎 GRAM: <b>{gram:.2f}</b>\n"
+            f"💵 USDT: <b>{usdt:.2f}</b>\n"
+            f"⭐ Stars: <b>{stars:.2f}</b>\n\n"
+            f"👥 <b>Referrals:</b> <b>{ref_count}</b> users invited"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="👥 Referral Details", callback_data="referrals")],
+                [InlineKeyboardButton(text="👥 Referral Program", callback_data="referrals")],
+                [InlineKeyboardButton(text="💳 Top up balance", callback_data="deposit_balance")],
                 [InlineKeyboardButton(text="◀️ Back to menu", callback_data="back_to_menu")],
             ]
         )
     else:
-        text = (
-            f"👤 <b>Профиль пользователя</b>\n\n"
+        caption = (
+            f"👤 <b>Профиль пользователя — Hyped Deals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Юзернейм:</b> {username_str}\n"
             f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n\n"
-            f"💰 <b>Балансы:</b>\n"
-            f"💳 RUB: {rub:.2f}\n"
-            f"🇺🇦 UAH: {uah:.2f}\n"
-            f"🇧🇾 BYN: {byn:.2f}\n"
-            f"🇰🇿 KZT: {kzt:.2f}\n"
-            f"💎 GRAM: {gram:.2f}\n"
-            f"💵 USDT: {usdt:.2f}\n"
-            f"⭐ Stars: {stars:.2f}\n\n"
-            f"👥 <b>Реферальная программа:</b>\n"
-            f"• Приглашено пользователей: <b>{ref_count}</b>\n"
-            f"• Награда: <b>50%</b> от комиссии сервиса\n"
-            f"🔗 <b>Ваша реферальная ссылка:</b>\n<code>{ref_link}</code>"
+            f"💰 <b>Ваши балансы:</b>\n"
+            f"💳 RUB: <b>{rub:.2f}</b>\n"
+            f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
+            f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
+            f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"
+            f"💎 GRAM: <b>{gram:.2f}</b>\n"
+            f"💵 USDT: <b>{usdt:.2f}</b>\n"
+            f"⭐ Stars: <b>{stars:.2f}</b>\n\n"
+            f"👥 <b>Рефералы:</b> <b>{ref_count}</b> чел. приглашено"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="👥 Подробнее о рефералах", callback_data="referrals")],
+                [InlineKeyboardButton(text="👥 Реферальная программа", callback_data="referrals")],
+                [InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="deposit_balance")],
                 [InlineKeyboardButton(text="◀️ Назад в меню", callback_data="back_to_menu")],
             ]
         )
 
+    # Отображаем фото сервиса вместе с профилем
+    if os.path.exists(LOGO_PATH):
+        try:
+            await callback.message.edit_media(
+                InputMediaPhoto(media=FSInputFile(LOGO_PATH), caption=caption, parse_mode="HTML"),
+                reply_markup=kb
+            )
+        except Exception:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer_photo(
+                photo=FSInputFile(LOGO_PATH),
+                caption=caption,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+    else:
+        try:
+            await callback.message.edit_text(caption, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
+
+    await callback.answer()
+
+
+# ------------------ Раздел «Пополнение баланса» (Официальные реквизиты) ------------------
+
+@dp.callback_query(F.data == "deposit_balance")
+async def show_deposit_methods(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    lang = await db.get_user_language(user_id)
+
+    if lang == "en":
+        text = (
+            "💳 <b>Top up Balance — Official Requisites</b>\n\n"
+            "Select a payment method below or transfer to our official details:\n\n"
+            "🇷🇺 <b>Russian card (SberBank):</b>\n"
+            "<code>2202 2088 1003 8217</code>\n\n"
+            "🇺🇦 <b>Ukrainian card (PrivatBank):</b>\n"
+            "<code>4731 2171 1109 2944</code>\n\n"
+            "🇰🇿 <b>Kazakhstan card:</b>\n"
+            "<code>4400 4301 1964 9553</code>\n\n"
+            "🇧🇾 <b>Belarus card (Belarusbank):</b>\n"
+            f"Issued on request via manager @{SUPPORT_USERNAME}\n\n"
+            "💎 <b>Crypto (USDT TRC-20 / TON / GRAM):</b>\n"
+            f"Issued on request via manager @{SUPPORT_USERNAME}\n\n"
+            "⭐ <b>Telegram Stars:</b>\n"
+            f"Directly via manager @{SUPPORT_USERNAME}\n\n"
+            f"⚠️ <b>Important:</b> After transferring, send a receipt or screenshot to our manager @{SUPPORT_USERNAME} for immediate crediting!"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🇷🇺 SberBank", callback_data="dep_sber"),
+                    InlineKeyboardButton(text="🇺🇦 PrivatBank", callback_data="dep_privat"),
+                ],
+                [
+                    InlineKeyboardButton(text="🇰🇿 Kazakhstan Card", callback_data="dep_kzt"),
+                    InlineKeyboardButton(text="🇧🇾 Belarusbank", callback_data="dep_byn"),
+                ],
+                [
+                    InlineKeyboardButton(text="💎 Crypto Wallet", callback_data="dep_crypto"),
+                    InlineKeyboardButton(text="⭐ Stars", callback_data="dep_stars"),
+                ],
+                [InlineKeyboardButton(text="💬 Contact Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="👤 Back to Profile", callback_data="profile")],
+                [InlineKeyboardButton(text="◀️ Main Menu", callback_data="back_to_menu")],
+            ]
+        )
+    else:
+        text = (
+            "💳 <b>Пополнение баланса — Официальные реквизиты</b>\n\n"
+            "Выберите способ пополнения ниже или переведите средства по официальным реквизитам сервиса:\n\n"
+            "🇷🇺 <b>Российская карта (Сбербанк):</b>\n"
+            "<code>2202 2088 1003 8217</code>\n\n"
+            "🇺🇦 <b>Украинская карта (ПриватБанк):</b>\n"
+            "<code>4731 2171 1109 2944</code>\n\n"
+            "🇰🇿 <b>Казахстанская карта:</b>\n"
+            "<code>4400 4301 1964 9553</code>\n\n"
+            "🇧🇾 <b>Белорусская карта (Беларусбанк):</b>\n"
+            f"Реквизиты выдаются у менеджера @{SUPPORT_USERNAME}\n\n"
+            "💎 <b>Криптовалюта (USDT TRC-20 / TON / GRAM):</b>\n"
+            f"Реквизиты кошелька выдаются у менеджера @{SUPPORT_USERNAME}\n\n"
+            "⭐ <b>Telegram Stars:</b>\n"
+            f"Пополнение звездами через менеджера @{SUPPORT_USERNAME}\n\n"
+            f"⚠️ <b>Важно:</b> после оплаты обязательно отправьте чек / квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления средств на ваш баланс!"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🇷🇺 Сбербанк", callback_data="dep_sber"),
+                    InlineKeyboardButton(text="🇺🇦 ПриватБанк", callback_data="dep_privat"),
+                ],
+                [
+                    InlineKeyboardButton(text="🇰🇿 Карта КЗ", callback_data="dep_kzt"),
+                    InlineKeyboardButton(text="🇧🇾 Беларусбанк", callback_data="dep_byn"),
+                ],
+                [
+                    InlineKeyboardButton(text="💎 Криптокошелек", callback_data="dep_crypto"),
+                    InlineKeyboardButton(text="⭐ Звёзды (Stars)", callback_data="dep_stars"),
+                ],
+                [InlineKeyboardButton(text="💬 Написать менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="👤 Назад в профиль", callback_data="profile")],
+                [InlineKeyboardButton(text="◀️ В главное меню", callback_data="back_to_menu")],
+            ]
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_sber")
+async def show_dep_sber(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "🇷🇺 <b>Top up via SberBank (RUB)</b>\n\n"
+            "Card number (tap to copy):\n"
+            "<code>2202 2088 1003 8217</code>\n\n"
+            "Bank: <b>SberBank</b>\n"
+            "Currency: <b>Russian Rubles (RUB)</b>\n\n"
+            f"After payment, please send the transaction receipt to manager @{SUPPORT_USERNAME} for crediting."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Send Receipt to Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "🇷🇺 <b>Пополнение через Сбербанк (RUB)</b>\n\n"
+            "Номер карты (нажмите, чтобы скопировать):\n"
+            "<code>2202 2088 1003 8217</code>\n\n"
+            "Банк: <b>СберБанк</b>\n"
+            "Валюта: <b>Рубли (RUB)</b>\n\n"
+            f"После перевода отправьте квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Отправить чек менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_privat")
+async def show_dep_privat(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "🇺🇦 <b>Top up via PrivatBank (UAH)</b>\n\n"
+            "Card number (tap to copy):\n"
+            "<code>4731 2171 1109 2944</code>\n\n"
+            "Bank: <b>PrivatBank</b>\n"
+            "Currency: <b>Hryvnia (UAH)</b>\n\n"
+            f"After payment, please send the transaction receipt to manager @{SUPPORT_USERNAME} for crediting."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Send Receipt to Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "🇺🇦 <b>Пополнение через ПриватБанк (UAH)</b>\n\n"
+            "Номер карты (нажмите, чтобы скопировать):\n"
+            "<code>4731 2171 1109 2944</code>\n\n"
+            "Банк: <b>ПриватБанк</b>\n"
+            "Валюта: <b>Гривны (UAH)</b>\n\n"
+            f"После перевода отправьте квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Отправить чек менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_kzt")
+async def show_dep_kzt(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "🇰🇿 <b>Top up via Kazakhstan Card (KZT)</b>\n\n"
+            "Card number (tap to copy):\n"
+            "<code>4400 4301 1964 9553</code>\n\n"
+            "Currency: <b>Tenge (KZT)</b>\n\n"
+            f"After payment, please send the transaction receipt to manager @{SUPPORT_USERNAME} for crediting."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Send Receipt to Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "🇰🇿 <b>Пополнение картой Казахстана (KZT)</b>\n\n"
+            "Номер карты (нажмите, чтобы скопировать):\n"
+            "<code>4400 4301 1964 9553</code>\n\n"
+            "Валюта: <b>Тенге (KZT)</b>\n\n"
+            f"После перевода отправьте квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Отправить чек менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_byn")
+async def show_dep_byn(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "🇧🇾 <b>Top up via Belarusbank (BYN)</b>\n\n"
+            f"To get the latest Belarusbank requisites, please contact manager @{SUPPORT_USERNAME}.\n\n"
+            "Funds will be credited to your balance immediately after payment confirmation."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Contact Manager @HypedDealsSupport ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "🇧🇾 <b>Пополнение через Беларусбанк (BYN)</b>\n\n"
+            f"Актуальные реквизиты карты Беларусбанка выдаются напрямую через менеджера @{SUPPORT_USERNAME}.\n\n"
+            "После подтверждения перевода средства будут моментально зачислены на ваш баланс."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Написать менеджеру @HypedDealsSupport ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_crypto")
+async def show_dep_crypto(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "💎 <b>Top up via Cryptocurrency (USDT / TON / GRAM)</b>\n\n"
+            f"We accept USDT (TRC-20, TON), TON and GRAM.\n"
+            f"To get the official deposit address, message manager @{SUPPORT_USERNAME}."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Get Wallet Address ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "💎 <b>Пополнение криптовалютой (USDT / TON / GRAM)</b>\n\n"
+            f"Мы принимаем USDT (TRC-20, TON), TON и GRAM.\n"
+            f"Для получения адреса кошелька для пополнения напишите менеджеру @{SUPPORT_USERNAME}."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Получить адрес кошелька ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "dep_stars")
+async def show_dep_stars(callback: CallbackQuery):
+    lang = await db.get_user_language(callback.from_user.id)
+    if lang == "en":
+        text = (
+            "⭐ <b>Top up via Telegram Stars</b>\n\n"
+            f"To top up your balance with Telegram Stars, please contact manager @{SUPPORT_USERNAME}."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Contact Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
+            ]
+        )
+    else:
+        text = (
+            "⭐ <b>Пополнение Telegram Stars</b>\n\n"
+            f"Для пополнения баланса звёздами Telegram Stars напишите менеджеру @{SUPPORT_USERNAME}."
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Написать менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
+                [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
+            ]
+        )
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
@@ -2275,6 +2618,12 @@ async def show_referrals(callback: CallbackQuery):
             f"👥 Invited: {ref_count} users\n"
             "💰 Earned: 0.0 RUB"
         )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👤 Back to Profile", callback_data="profile")],
+                [InlineKeyboardButton(text="◀️ Main Menu", callback_data="back_to_menu")],
+            ]
+        )
     else:
         text = (
             "👥 <b>Реферальная программа:</b>\n\n"
@@ -2283,10 +2632,20 @@ async def show_referrals(callback: CallbackQuery):
             f"👥 Приглашено: {ref_count} чел.\n"
             "💰 Заработано: 0.0 RUB"
         )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👤 Назад в профиль", callback_data="profile")],
+                [InlineKeyboardButton(text="◀️ В главное меню", callback_data="back_to_menu")],
+            ]
+        )
     try:
-        await callback.message.edit_text(text, reply_markup=get_back_keyboard(lang), parse_mode="HTML")
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await callback.message.answer(text, reply_markup=get_back_keyboard(lang), parse_mode="HTML")
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -2391,18 +2750,16 @@ async def select_lang(callback: CallbackQuery):
 async def back_to_menu_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     lang = await db.get_user_language(callback.from_user.id)
+    text = get_welcome_text(SUPPORT_USERNAME, lang=lang)
+    kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang)
     try:
-        await callback.message.edit_text(
-            get_welcome_text(SUPPORT_USERNAME, lang=lang),
-            reply_markup=get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang),
-            parse_mode="HTML",
-        )
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await callback.message.answer(
-            get_welcome_text(SUPPORT_USERNAME, lang=lang),
-            reply_markup=get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang),
-            parse_mode="HTML",
-        )
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 

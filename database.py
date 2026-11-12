@@ -55,6 +55,16 @@ async def init_db():
         except Exception:
             pass
 
+        try:
+            await db.execute("ALTER TABLE deals ADD COLUMN is_paid INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            await db.execute("ALTER TABLE deals ADD COLUMN image_url TEXT DEFAULT NULL")
+        except Exception:
+            pass
+
         for col in ["balance_uah", "balance_byn", "balance_kzt", "balance_gram", "balance_usdt"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} REAL DEFAULT 0.0")
@@ -126,16 +136,17 @@ async def create_deal(
     creator_role: str = "seller",
     currency: str = "RUB",
     fee: float = 0.0,
-    language: str = "ru"
+    language: str = "ru",
+    image_url: str = None
 ) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         await db.execute(
             """
-            INSERT INTO deals (deal_id, creator_id, creator_name, creator_role, amount, currency, fee, item_link, status, language)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'created', ?)
+            INSERT INTO deals (deal_id, creator_id, creator_name, creator_role, amount, currency, fee, item_link, status, language, image_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?)
             """,
-            (deal_id, creator_id, creator_name, creator_role, amount, currency, fee, item_link, language)
+            (deal_id, creator_id, creator_name, creator_role, amount, currency, fee, item_link, language, image_url)
         )
         await db.commit()
         async with db.execute("SELECT * FROM deals WHERE deal_id = ?", (deal_id,)) as cursor:
@@ -261,3 +272,66 @@ async def get_user_language(user_id: int) -> str:
             if row and row["language"]:
                 return row["language"]
             return "ru"
+
+
+async def mark_deal_paid(deal_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE deals SET is_paid = 1 WHERE deal_id = ?", (deal_id,))
+        await db.commit()
+
+
+def get_balance_column(curr_key: str) -> str:
+    curr = str(curr_key).lower().strip()
+    mapping = {
+        "rub": "balance_rub",
+        "uah": "balance_uah",
+        "byn": "balance_byn",
+        "kzt": "balance_kzt",
+        "gram": "balance_gram",
+        "usdt": "balance_usdt",
+        "stars": "balance_stars",
+        "crypto": "balance_crypto",
+    }
+    return mapping.get(curr, "balance_rub")
+
+
+async def set_user_balance(user_id: int, curr_key: str, amount: float):
+    col = get_balance_column(curr_key)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f"UPDATE users SET {col} = ? WHERE user_id = ?", (round(amount, 2), user_id))
+        await db.commit()
+
+
+async def change_user_balance(user_id: int, curr_key: str, delta: float) -> float:
+    col = get_balance_column(curr_key)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT {col} FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            current = row[col] if row and row[col] is not None else 0.0
+        new_val = max(0.0, round(current + delta, 2))
+        await db.execute(f"UPDATE users SET {col} = ? WHERE user_id = ?", (new_val, user_id))
+        await db.commit()
+        return new_val
+
+
+async def set_user_deals_count(user_id: int, count: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET completed_deals = ? WHERE user_id = ?", (max(0, int(count)), user_id))
+        await db.commit()
+
+
+async def find_user_by_identifier(identifier: str):
+    clean = str(identifier).strip().lstrip("@")
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if clean.isdigit():
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (int(clean),)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return dict(row)
+        async with db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+    return None

@@ -16,6 +16,9 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
+    InlineQueryResultPhoto,
+    InlineQueryResultGif,
+    LinkPreviewOptions,
     InputTextMessageContent,
     Message,
     CallbackQuery,
@@ -383,7 +386,7 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="💳 Card RUB", callback_data="set_req_rub"),
+                    InlineKeyboardButton(text="🇷🇺 Card RUB", callback_data="set_req_rub"),
                     InlineKeyboardButton(text="🇺🇦 Card UAH", callback_data="set_req_uah"),
                 ],
                 [
@@ -403,7 +406,7 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="💳 Карта RUB", callback_data="set_req_rub"),
+                InlineKeyboardButton(text="🇷🇺 Карта RUB", callback_data="set_req_rub"),
                 InlineKeyboardButton(text="🇺🇦 Карта UAH", callback_data="set_req_uah"),
             ],
             [
@@ -1226,6 +1229,39 @@ async def seller_gift_done_handler(callback: CallbackQuery):
     )
     await callback.answer(alert_msg, show_alert=True)
 
+    # Обновляем сообщение продавца с подтверждением
+    if seller_lang == "en":
+        seller_status_text = (
+            f"✅ <b>You have confirmed transferring the gift to manager @{SUPPORT_USERNAME}!</b>\n\n"
+            f"🤝 Deal: <b>#{deal_id}</b>\n\n"
+            f"⏳ <b>Please wait while the buyer verifies the transfer and completes the deal.</b>\n"
+            f"Once completed, the funds will be instantly credited to your balance."
+        )
+        seller_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🆘 Technical Support ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="◀️ Back to menu", callback_data="back_to_menu")],
+            ]
+        )
+    else:
+        seller_status_text = (
+            f"✅ <b>Вы подтвердили передачу подарка менеджеру @{SUPPORT_USERNAME}!</b>\n\n"
+            f"🤝 Сделка: <b>#{deal_id}</b>\n\n"
+            f"⏳ <b>Ожидайте, пока покупатель проверит передачу и завершит сделку.</b>\n"
+            f"Как только сделка завершится, средства моментально поступят на ваш баланс."
+        )
+        seller_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🆘 Техническая поддержка ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="◀️ В главное меню", callback_data="back_to_menu")],
+            ]
+        )
+
+    try:
+        await callback.message.edit_text(seller_status_text, reply_markup=seller_kb, parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось обновить статус продавца: {e}")
+
     if buyer_id:
         buyer_lang = await db.get_user_language(buyer_id)
         if creator_role == "seller":
@@ -1532,8 +1568,32 @@ async def inline_query_handler(inline_query: InlineQuery):
                 inline_keyboard=[[InlineKeyboardButton(text=btn_text, url=join_url)]]
             )
 
-            card = InlineQueryResultArticle(
-                id=deal_id,
+            is_gif = str(img_url).lower().endswith(".gif")
+            if is_gif:
+                card_media = InlineQueryResultGif(
+                    id=f"gif_{deal_id}",
+                    gif_url=img_url,
+                    thumbnail_url=img_url,
+                    title=card_title,
+                    caption=invite_text,
+                    parse_mode="HTML",
+                    reply_markup=invite_keyboard,
+                )
+            else:
+                card_media = InlineQueryResultPhoto(
+                    id=f"photo_{deal_id}",
+                    photo_url=img_url,
+                    thumbnail_url=img_url,
+                    title=card_title,
+                    description=card_desc,
+                    caption=invite_text,
+                    parse_mode="HTML",
+                    reply_markup=invite_keyboard,
+                )
+            results.append(card_media)
+
+            card_article = InlineQueryResultArticle(
+                id=f"art_{deal_id}",
                 title=card_title,
                 description=card_desc,
                 thumbnail_url=img_url,
@@ -1542,11 +1602,16 @@ async def inline_query_handler(inline_query: InlineQuery):
                 input_message_content=InputTextMessageContent(
                     message_text=f'<a href="{img_url}">&#8203;</a>' + invite_text,
                     parse_mode="HTML",
-                    disable_web_page_preview=False,
+                    link_preview_options=LinkPreviewOptions(
+                        is_disabled=False,
+                        url=img_url,
+                        prefer_large_media=True,
+                        show_above_text=True,
+                    ),
                 ),
                 reply_markup=invite_keyboard,
             )
-            results.append(card)
+            results.append(card_article)
 
     if not results:
         user_deals = await db.get_user_active_created_deals(inline_query.from_user.id)
@@ -1589,7 +1654,31 @@ async def inline_query_handler(inline_query: InlineQuery):
                 inline_keyboard=[[InlineKeyboardButton(text=btn_text, url=join_url)]]
             )
 
-            card = InlineQueryResultArticle(
+            is_gif = str(img_url).lower().endswith(".gif")
+            if is_gif:
+                card_media = InlineQueryResultGif(
+                    id=f"gif_act_{deal_id}",
+                    gif_url=img_url,
+                    thumbnail_url=img_url,
+                    title=card_title,
+                    caption=invite_text,
+                    parse_mode="HTML",
+                    reply_markup=invite_keyboard,
+                )
+            else:
+                card_media = InlineQueryResultPhoto(
+                    id=f"photo_act_{deal_id}",
+                    photo_url=img_url,
+                    thumbnail_url=img_url,
+                    title=card_title,
+                    description=card_desc,
+                    caption=invite_text,
+                    parse_mode="HTML",
+                    reply_markup=invite_keyboard,
+                )
+            results.append(card_media)
+
+            card_article = InlineQueryResultArticle(
                 id=f"active_{deal_id}",
                 title=card_title,
                 description=card_desc,
@@ -1599,11 +1688,16 @@ async def inline_query_handler(inline_query: InlineQuery):
                 input_message_content=InputTextMessageContent(
                     message_text=f'<a href="{img_url}">&#8203;</a>' + invite_text,
                     parse_mode="HTML",
-                    disable_web_page_preview=False,
+                    link_preview_options=LinkPreviewOptions(
+                        is_disabled=False,
+                        url=img_url,
+                        prefer_large_media=True,
+                        show_above_text=True,
+                    ),
                 ),
                 reply_markup=invite_keyboard,
             )
-            results.append(card)
+            results.append(card_article)
 
     if not results:
         hint_card = InlineQueryResultArticle(
@@ -1646,7 +1740,7 @@ async def show_balance(callback: CallbackQuery):
     if lang == "en":
         text = (
             "💰 <b>Balance:</b>\n\n"
-            f"💳 RUB — {rub:.1f}\n"
+            f"🇷🇺 RUB — {rub:.1f}\n"
             f"🇺🇦 UAH — {uah:.1f}\n"
             f"🇧🇾 BYN — {byn:.1f}\n"
             f"🇰🇿 KZT — {kzt:.1f}\n"
@@ -1659,7 +1753,7 @@ async def show_balance(callback: CallbackQuery):
     else:
         text = (
             "💰 <b>Баланс:</b>\n\n"
-            f"💳 RUB — {rub:.1f}\n"
+            f"🇷🇺 RUB — {rub:.1f}\n"
             f"🇺🇦 UAH — {uah:.1f}\n"
             f"🇧🇾 BYN — {byn:.1f}\n"
             f"🇰🇿 KZT — {kzt:.1f}\n"
@@ -2080,7 +2174,7 @@ async def show_requisites(callback: CallbackQuery, state: FSMContext):
     if lang == "en":
         text = (
             "🪪 <b>Your payout requisites:</b>\n\n"
-            f"💳 <b>Cards (RUB):</b> <code>{req_rub}</code>\n"
+            f"🇷🇺 <b>Cards (RUB):</b> <code>{req_rub}</code>\n"
             f"🇺🇦 <b>Cards (UAH):</b> <code>{req_uah}</code>\n"
             f"🇧🇾 <b>Cards (BYN):</b> <code>{req_byn}</code>\n"
             f"🇰🇿 <b>Cards (KZT):</b> <code>{req_kzt}</code>\n"
@@ -2092,7 +2186,7 @@ async def show_requisites(callback: CallbackQuery, state: FSMContext):
     else:
         text = (
             "🪪 <b>Ваши реквизиты для вывода:</b>\n\n"
-            f"💳 <b>Карты (RUB):</b> <code>{req_rub}</code>\n"
+            f"🇷🇺 <b>Карты (RUB):</b> <code>{req_rub}</code>\n"
             f"🇺🇦 <b>Карты (UAH):</b> <code>{req_uah}</code>\n"
             f"🇧🇾 <b>Карты (BYN):</b> <code>{req_byn}</code>\n"
             f"🇰🇿 <b>Карты (KZT):</b> <code>{req_kzt}</code>\n"
@@ -2210,7 +2304,7 @@ async def show_profile(callback: CallbackQuery):
             f"👤 <b>Username:</b> {username_str}\n"
             f"📈 <b>Completed deals:</b> <b>{completed}</b>\n\n"
             f"💰 <b>Your balances:</b>\n"
-            f"💳 RUB: <b>{rub:.2f}</b>\n"
+            f"🇷🇺 RUB: <b>{rub:.2f}</b>\n"
             f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
             f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
             f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"
@@ -2233,7 +2327,7 @@ async def show_profile(callback: CallbackQuery):
             f"👤 <b>Юзернейм:</b> {username_str}\n"
             f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n\n"
             f"💰 <b>Ваши балансы:</b>\n"
-            f"💳 RUB: <b>{rub:.2f}</b>\n"
+            f"🇷🇺 RUB: <b>{rub:.2f}</b>\n"
             f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
             f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
             f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"

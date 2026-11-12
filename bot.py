@@ -114,6 +114,11 @@ class WorkerStates(StatesGroup):
     waiting_for_deals_count = State()
 
 
+# Машина состояний для вывода средств
+class WithdrawStates(StatesGroup):
+    waiting_for_amount = State()
+
+
 def generate_deal_id(length: int = 10) -> str:
     """Генерация уникального буквенно-цифрового хеша сделки (например, muunnkr37q)."""
     chars = string.ascii_lowercase + string.digits
@@ -134,7 +139,7 @@ def get_main_menu_keyboard(support_user: str, lang: str = "ru") -> InlineKeyboar
                 ],
                 [
                     InlineKeyboardButton(text="🪪 Requisites", callback_data="requisites"),
-                    InlineKeyboardButton(text="👥 Referrals", callback_data="referrals"),
+                    InlineKeyboardButton(text="👤 Profile", callback_data="profile"),
                 ],
                 [
                     InlineKeyboardButton(text="💬 Reviews", callback_data="reviews"),
@@ -157,7 +162,7 @@ def get_main_menu_keyboard(support_user: str, lang: str = "ru") -> InlineKeyboar
             ],
             [
                 InlineKeyboardButton(text="🪪 Мои реквизиты", callback_data="requisites"),
-                InlineKeyboardButton(text="👥 Рефералы", callback_data="referrals"),
+                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
             ],
             [
                 InlineKeyboardButton(text="💬 Отзывы", callback_data="reviews"),
@@ -507,156 +512,227 @@ async def cmd_start(message: Message, state: FSMContext):
 
         visitor_name = f"@{username}" if username else full_name
 
-        # 1. Если сделка ЕЩЕ НЕ ОПЛАЧЕНА (покупатель сначала должен оплатить сделку!)
-        if not is_paid:
-            if user_id == buyer_id:
-                # Подключился ПОКУПАТЕЛЬ -> уведомляем создателя-продавца об ожидании оплаты
-                if seller_lang == "en":
-                    c_text = (
-                        f"🔔 Buyer {visitor_name} joined your deal <b>#{deal_id}</b>!\n\n"
-                        f"⏳ <b>Waiting for buyer to pay for the deal...</b>\n"
-                        f"Once paid, you will receive a notification to transfer the gift to manager @{SUPPORT_USERNAME}."
-                    )
-                else:
-                    c_text = (
-                        f"🔔 Покупатель {visitor_name} подключился к вашей сделке <b>#{deal_id}</b>!\n\n"
-                        f"⏳ <b>Ожидайте, пока покупатель оплатит сделку...</b>\n"
-                        f"Как только оплата поступит, вам придёт сообщение для передачи подарка менеджеру @{SUPPORT_USERNAME}."
-                    )
-                try:
-                    await message.bot.send_message(
-                        chat_id=seller_id,
-                        text=c_text,
-                        reply_markup=get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(deal["creator_id"] == seller_id), lang=seller_lang),
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-
-                # Карточка для покупателя с кнопкой оплаты
-                if buyer_lang == "en":
-                    card_text = (
-                        f"✅ <b>You joined deal #{deal_id} as buyer.</b>\n\n"
-                        f"<blockquote>"
-                        f"👤 <b>Seller:</b> {creator_username}\n"
-                        f"📌 <b>Seller ID:</b> {deal['creator_id']}\n"
-                        f"📈 <b>Seller completed deals:</b> {creator_deals}\n"
-                        f"📦 <b>Description:</b> {deal['item_link']}\n"
-                        f"{curr['flag']} <b>Currency:</b> {deal['currency']}\n"
-                        f"💰 <b>Amount:</b> {deal['amount']:.2f}\n"
-                        f"📊 <b>Service fee (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
-                        f"</blockquote>\n\n"
-                        f"🛡 All payments and item delivery are handled ONLY via manager @{SUPPORT_USERNAME}.\n"
-                        f"💳 <b>Please pay for the deal using the button below to proceed:</b>"
-                    )
-                else:
-                    card_text = (
-                        f"✅ <b>Вы подключились к сделке #{deal_id} как покупатель.</b>\n\n"
-                        f"<blockquote>"
-                        f"👤 <b>Продавец:</b> {creator_username}\n"
-                        f"📌 <b>ID продавца:</b> {deal['creator_id']}\n"
-                        f"📈 <b>Сделок у продавца:</b> {creator_deals}\n"
-                        f"📦 <b>Описание:</b> {deal['item_link']}\n"
-                        f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
-                        f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
-                        f"📊 <b>Комиссия сервиса (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
-                        f"</blockquote>\n\n"
-                        f"🛡 Вся оплата и передача товара проходит ТОЛЬКО через менеджера @{SUPPORT_USERNAME}.\n"
-                        f"💳 <b>Для продолжения оплатите сделку кнопкой ниже:</b>"
-                    )
-                await message.answer(
-                    card_text,
-                    reply_markup=get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=buyer_lang),
-                    parse_mode="HTML",
-                    disable_web_page_preview=False
-                )
-            else:
-                # Подключился ПРОДАВЕЦ -> уведомляем создателя-покупателя об оплате
-                if buyer_lang == "en":
-                    c_text = (
-                        f"🔔 Seller {visitor_name} joined your deal <b>#{deal_id}</b>!\n\n"
-                        f"💳 <b>Please pay for the deal using the button below to freeze funds and start the exchange:</b>"
-                    )
-                else:
-                    c_text = (
-                        f"🔔 Продавец {visitor_name} подключился к вашей сделке <b>#{deal_id}</b>!\n\n"
-                        f"💳 <b>Оплатите сделку кнопкой ниже, чтобы заморозить средства и начать обмен:</b>"
-                    )
-                try:
-                    await message.bot.send_message(
-                        chat_id=buyer_id,
-                        text=c_text,
-                        reply_markup=get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang),
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-
-                # Карточка для продавца об ожидании оплаты
-                if seller_lang == "en":
-                    card_text = (
-                        f"✅ <b>You joined deal #{deal_id} as seller.</b>\n\n"
-                        f"<blockquote>"
-                        f"👤 <b>Buyer:</b> {creator_username}\n"
-                        f"📌 <b>Buyer ID:</b> {deal['creator_id']}\n"
-                        f"📈 <b>Buyer completed deals:</b> {creator_deals}\n"
-                        f"📦 <b>Description:</b> {deal['item_link']}\n"
-                        f"{curr['flag']} <b>Currency:</b> {deal['currency']}\n"
-                        f"💰 <b>Amount:</b> {deal['amount']:.2f}\n"
-                        f"📊 <b>Service fee (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
-                        f"</blockquote>\n\n"
-                        f"🛡 All payments and item delivery are handled ONLY via manager @{SUPPORT_USERNAME}.\n"
-                        f"⏳ <b>Waiting for buyer to pay for the deal...</b> After payment is received, you will transfer the gift to manager."
-                    )
-                else:
-                    card_text = (
-                        f"✅ <b>Вы подключились к сделке #{deal_id} как продавец.</b>\n\n"
-                        f"<blockquote>"
-                        f"👤 <b>Покупатель:</b> {creator_username}\n"
-                        f"📌 <b>ID покупателя:</b> {deal['creator_id']}\n"
-                        f"📈 <b>Сделок у покупателя:</b> {creator_deals}\n"
-                        f"📦 <b>Описание:</b> {deal['item_link']}\n"
-                        f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
-                        f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
-                        f"📊 <b>Комиссия сервиса (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
-                        f"</blockquote>\n\n"
-                        f"🛡 Вся оплата и передача товара проходит ТОЛЬКО через менеджера @{SUPPORT_USERNAME}.\n"
-                        f"⏳ <b>Ожидайте оплаты сделки покупателем...</b> После подтверждения оплаты вам необходимо будет передать подарок менеджеру."
-                    )
-                await message.answer(
-                    card_text,
-                    reply_markup=get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=seller_lang),
-                    parse_mode="HTML",
-                    disable_web_page_preview=False
-                )
-
-        # 2. Если сделка УЖЕ ОПЛАЧЕНА:
-        else:
+        # Логика в зависимости от роли создателя сделки:
+        # Если создатель ПРОДАВЕЦ — обратный порядок: продавец сначала передает подарок менеджеру, затем покупатель оплачивает и завершает сделку!
+        # Если создатель ПОКУПАТЕЛЬ — обычный порядок: покупатель сначала оплачивает, продавец передает подарок, покупатель подтверждает!
+        if creator_role == "seller":
             if not gift_sent:
-                if user_id == seller_id:
-                    kb = get_seller_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(deal["creator_id"] == seller_id), lang=seller_lang)
-                    status_desc = f"📦 Передайте подарок нашему менеджеру @{SUPPORT_USERNAME}:" if seller_lang != "en" else f"📦 Transfer the gift to manager @{SUPPORT_USERNAME}:"
-                else:
-                    kb = get_buyer_waiting_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(deal["creator_id"] == buyer_id), lang=buyer_lang)
-                    status_desc = "⏳ Ожидайте, пока продавец передаст подарок менеджеру..." if buyer_lang != "en" else "⏳ Waiting for seller to transfer gift to manager..."
-            else:
                 if user_id == buyer_id:
-                    kb = get_buyer_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(deal["creator_id"] == buyer_id), lang=buyer_lang)
-                    status_desc = "🎁 Подарок передан менеджеру. Подтвердите получение кнопкой ниже:" if buyer_lang != "en" else "🎁 Gift transferred to manager. Confirm receipt below:"
-                else:
-                    kb = get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(deal["creator_id"] == seller_id), lang=seller_lang)
-                    status_desc = "⏳ Ожидание подтверждения покупателем..." if seller_lang != "en" else "⏳ Waiting for buyer confirmation..."
+                    # Подключился покупатель -> продавец еще не передал подарок
+                    if seller_lang == "en":
+                        c_text = (
+                            f"🔔 Buyer {visitor_name} joined your deal <b>#{deal_id}</b>!\n\n"
+                            f"📦 <b>Please transfer the gift to manager @{SUPPORT_USERNAME} and click «Done - gift transferred to manager» below:</b>"
+                        )
+                    else:
+                        c_text = (
+                            f"🔔 Покупатель {visitor_name} подключился к сделке <b>#{deal_id}</b>!\n\n"
+                            f"📦 <b>Передайте подарок менеджеру @{SUPPORT_USERNAME} и нажмите «Готово - подарок передан менеджеру» ниже:</b>"
+                        )
+                    try:
+                        await message.bot.send_message(
+                            chat_id=seller_id,
+                            text=c_text,
+                            reply_markup=get_seller_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=seller_lang),
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
 
-            card_text = (
-                f"✅ <b>Сделка #{deal_id}</b>\n\n"
-                f"<blockquote>"
-                f"📦 <b>Описание:</b> {deal['item_link']}\n"
-                f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
-                f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
-                f"</blockquote>\n\n"
-                f"{status_desc}"
-            )
-            await message.answer(card_text, reply_markup=kb, parse_mode="HTML")
+                    if buyer_lang == "en":
+                        card_text = (
+                            f"✅ <b>You joined deal #{deal_id} as buyer.</b>\n\n"
+                            f"<blockquote>"
+                            f"👤 <b>Seller:</b> {creator_username}\n"
+                            f"📌 <b>Seller ID:</b> {deal['creator_id']}\n"
+                            f"📈 <b>Seller completed deals:</b> {creator_deals}\n"
+                            f"📦 <b>Description:</b> {deal['item_link']}\n"
+                            f"{curr['flag']} <b>Currency:</b> {deal['currency']}\n"
+                            f"💰 <b>Amount:</b> {deal['amount']:.2f}\n"
+                            f"📊 <b>Service fee (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
+                            f"</blockquote>\n\n"
+                            f"🛡 All payments and goods delivery are handled ONLY via manager @{SUPPORT_USERNAME}.\n"
+                            f"⏳ <b>Waiting for seller to transfer the gift to manager @{SUPPORT_USERNAME}...</b>"
+                        )
+                    else:
+                        card_text = (
+                            f"✅ <b>Вы подключились к сделке #{deal_id} как покупатель.</b>\n\n"
+                            f"<blockquote>"
+                            f"👤 <b>Продавец:</b> {creator_username}\n"
+                            f"📌 <b>ID продавца:</b> {deal['creator_id']}\n"
+                            f"📈 <b>Сделок у продавца:</b> {creator_deals}\n"
+                            f"📦 <b>Описание:</b> {deal['item_link']}\n"
+                            f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
+                            f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
+                            f"📊 <b>Комиссия сервиса (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
+                            f"</blockquote>\n\n"
+                            f"🛡 Вся оплата и передача товара проходит ТОЛЬКО через менеджера @{SUPPORT_USERNAME}.\n"
+                            f"⏳ <b>Ожидайте, пока продавец передаст подарок менеджеру @{SUPPORT_USERNAME}...</b>"
+                        )
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_buyer_waiting_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=buyer_lang),
+                        parse_mode="HTML",
+                        disable_web_page_preview=False
+                    )
+                else:
+                    # Продавец открыл свою сделку
+                    if seller_lang == "en":
+                        card_text = (
+                            f"✅ <b>Deal #{deal_id} (Seller)</b>\n\n"
+                            f"📦 Transfer gift to manager @{SUPPORT_USERNAME} and click «Done - gift transferred to manager» below:"
+                        )
+                    else:
+                        card_text = (
+                            f"✅ <b>Сделка #{deal_id} (Продавец)</b>\n\n"
+                            f"📦 Передайте подарок менеджеру @{SUPPORT_USERNAME} и нажмите «Готово - подарок передан менеджеру» ниже:"
+                        )
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_seller_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=seller_lang),
+                        parse_mode="HTML"
+                    )
+            else:
+                # Подарок передан продавцом! Покупатель оплачивает сделку
+                if user_id == buyer_id:
+                    if buyer_lang == "en":
+                        card_text = (
+                            f"✅ <b>Deal #{deal_id}</b>\n\n"
+                            f"🎁 <b>Seller has transferred the gift to manager @{SUPPORT_USERNAME}!</b>\n\n"
+                            f"💰 Amount to pay: <b>{deal['amount']:.2f} {curr['code']}</b>\n\n"
+                            f"💳 <b>Please pay for the deal using the button below to complete exchange and receive gift:</b>"
+                        )
+                    else:
+                        card_text = (
+                            f"✅ <b>Сделка #{deal_id}</b>\n\n"
+                            f"🎁 <b>Продавец передал подарок менеджеру @{SUPPORT_USERNAME}!</b>\n\n"
+                            f"💰 Сумма к оплате: <b>{deal['amount']:.2f} {curr['code']}</b>\n\n"
+                            f"💳 <b>Для получения подарка и завершения сделки оплатите сделку кнопкой ниже:</b>"
+                        )
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=buyer_lang),
+                        parse_mode="HTML",
+                        disable_web_page_preview=False
+                    )
+                else:
+                    if seller_lang == "en":
+                        card_text = f"⏳ <b>Deal #{deal_id}</b>: Waiting for buyer to pay and complete the deal..."
+                    else:
+                        card_text = f"⏳ <b>Сделка #{deal_id}</b>: Ожидайте оплаты и завершения сделки покупателем..."
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=seller_lang),
+                        parse_mode="HTML"
+                    )
+        else:
+            # Создатель ПОКУПАТЕЛЬ: покупатель оплачивает первым!
+            if not is_paid:
+                if user_id == buyer_id:
+                    # Покупатель оплачивает сделку
+                    if buyer_lang == "en":
+                        card_text = (
+                            f"✅ <b>Deal #{deal_id} (Buyer)</b>\n\n"
+                            f"💰 Amount: <b>{deal['amount']:.2f} {curr['code']}</b>\n\n"
+                            f"💳 <b>Please pay for the deal using the button below to proceed:</b>"
+                        )
+                    else:
+                        card_text = (
+                            f"✅ <b>Сделка #{deal_id} (Покупатель)</b>\n\n"
+                            f"💰 Сумма: <b>{deal['amount']:.2f} {curr['code']}</b>\n\n"
+                            f"💳 <b>Для продолжения оплатите сделку кнопкой ниже:</b>"
+                        )
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang),
+                        parse_mode="HTML",
+                        disable_web_page_preview=False
+                    )
+                else:
+                    # Подключился продавец, ожидает пока покупатель оплатит
+                    if buyer_lang == "en":
+                        c_text = (
+                            f"🔔 Seller {visitor_name} joined your deal <b>#{deal_id}</b>!\n\n"
+                            f"💳 <b>Please pay for the deal using the button below to proceed:</b>"
+                        )
+                    else:
+                        c_text = (
+                            f"🔔 Продавец {visitor_name} подключился к вашей сделке <b>#{deal_id}</b>!\n\n"
+                            f"💳 <b>Оплатите сделку кнопкой ниже для начала обмена:</b>"
+                        )
+                    try:
+                        await message.bot.send_message(
+                            chat_id=buyer_id,
+                            text=c_text,
+                            reply_markup=get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang),
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+
+                    if seller_lang == "en":
+                        card_text = (
+                            f"✅ <b>You joined deal #{deal_id} as seller.</b>\n\n"
+                            f"<blockquote>"
+                            f"👤 <b>Buyer:</b> {creator_username}\n"
+                            f"📌 <b>Buyer ID:</b> {deal['creator_id']}\n"
+                            f"📈 <b>Buyer completed deals:</b> {creator_deals}\n"
+                            f"📦 <b>Description:</b> {deal['item_link']}\n"
+                            f"{curr['flag']} <b>Currency:</b> {deal['currency']}\n"
+                            f"💰 <b>Amount:</b> {deal['amount']:.2f}\n"
+                            f"📊 <b>Service fee (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
+                            f"</blockquote>\n\n"
+                            f"🛡 All payments and goods delivery are handled ONLY via manager @{SUPPORT_USERNAME}.\n"
+                            f"⏳ <b>Waiting for buyer to pay for the deal...</b>"
+                        )
+                    else:
+                        card_text = (
+                            f"✅ <b>Вы подключились к сделке #{deal_id} как продавец.</b>\n\n"
+                            f"<blockquote>"
+                            f"👤 <b>Покупатель:</b> {creator_username}\n"
+                            f"📌 <b>ID покупателя:</b> {deal['creator_id']}\n"
+                            f"📈 <b>Сделок у покупателя:</b> {creator_deals}\n"
+                            f"📦 <b>Описание:</b> {deal['item_link']}\n"
+                            f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
+                            f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
+                            f"📊 <b>Комиссия сервиса (3%):</b> {deal.get('fee', 0.0):.2f} {deal['currency']}\n"
+                            f"</blockquote>\n\n"
+                            f"🛡 Вся оплата и передача товара проходит ТОЛЬКО через менеджера @{SUPPORT_USERNAME}.\n"
+                            f"⏳ <b>Ожидайте оплаты сделки покупателем...</b> После подтверждения оплаты вам необходимо будет передать подарок менеджеру."
+                        )
+                    await message.answer(
+                        card_text,
+                        reply_markup=get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=seller_lang),
+                        parse_mode="HTML",
+                        disable_web_page_preview=False
+                    )
+            else:
+                # Покупатель уже оплатил
+                if not gift_sent:
+                    if user_id == seller_id:
+                        kb = get_seller_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=seller_lang)
+                        status_desc = f"📦 Передайте подарок нашему менеджеру @{SUPPORT_USERNAME}:" if seller_lang != "en" else f"📦 Transfer the gift to manager @{SUPPORT_USERNAME}:"
+                    else:
+                        kb = get_buyer_waiting_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang)
+                        status_desc = "⏳ Ожидайте, пока продавец передаст подарок менеджеру..." if buyer_lang != "en" else "⏳ Waiting for seller to transfer gift to manager..."
+                else:
+                    if user_id == buyer_id:
+                        kb = get_buyer_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang)
+                        status_desc = "🎁 Подарок передан менеджеру. Подтвердите получение кнопкой ниже:" if buyer_lang != "en" else "🎁 Gift transferred to manager. Confirm receipt below:"
+                    else:
+                        kb = get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=seller_lang)
+                        status_desc = "⏳ Ожидание подтверждения покупателем..." if seller_lang != "en" else "⏳ Waiting for buyer confirmation..."
+
+                card_text = (
+                    f"✅ <b>Сделка #{deal_id}</b>\n\n"
+                    f"<blockquote>"
+                    f"📦 <b>Описание:</b> {deal['item_link']}\n"
+                    f"{curr['flag']} <b>Валюта:</b> {deal['currency']}\n"
+                    f"💰 <b>Сумма:</b> {deal['amount']:.2f}\n"
+                    f"</blockquote>\n\n"
+                    f"{status_desc}"
+                )
+                await message.answer(card_text, reply_markup=kb, parse_mode="HTML")
 
         return
 
@@ -876,7 +952,7 @@ async def process_nft_link(message: Message, state: FSMContext):
         role_label = "Seller" if creator_role == "seller" else "Buyer"
         counterpart_label = "buyer" if creator_role == "seller" else "seller"
         action_hint = (
-            "⏳ <b>Waiting for buyer to join and pay for the deal.</b>"
+            f"📦 <b>Please transfer the gift to manager @{SUPPORT_USERNAME} and click «Done - gift transferred to manager» below:</b>"
             if creator_role == "seller"
             else "💳 <b>Please pay for the deal using the button below to proceed:</b>"
         )
@@ -897,7 +973,7 @@ async def process_nft_link(message: Message, state: FSMContext):
         role_label = "Продавец" if creator_role == "seller" else "Покупатель"
         counterpart_label = "покупателя" if creator_role == "seller" else "продавца"
         action_hint = (
-            "⏳ <b>Ожидайте подключения и оплаты сделки покупателем.</b>"
+            f"📦 <b>Передайте подарок нашему менеджеру @{SUPPORT_USERNAME} и нажмите «Готово - подарок передан менеджеру» ниже:</b>"
             if creator_role == "seller"
             else "💳 <b>Для продолжения оплатите сделку кнопкой ниже:</b>"
         )
@@ -915,10 +991,10 @@ async def process_nft_link(message: Message, state: FSMContext):
             f"{action_hint}"
         )
 
-    # Если создатель — продавец, он ожидает пока покупатель подключится и оплатит
+    # Если создатель — продавец, он сразу может передать подарок менеджеру
     # Если создатель — покупатель, он сразу может оплатить сделку
     if creator_role == "seller":
-        kb = get_seller_waiting_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=deal_lang)
+        kb = get_seller_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=deal_lang)
     else:
         kb = get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=deal_lang)
 
@@ -989,6 +1065,65 @@ async def pay_deal_handler(callback: CallbackQuery):
     await db.change_user_balance(buyer_id, curr_key, -required_amount)
     await db.mark_deal_paid(deal_id)
 
+    creator_role = deal.get("creator_role", "seller")
+    gift_already_sent = deal.get("gift_sent", 0)
+
+    # ОБРАТНЫЙ ПОРЯДОК: если создатель сделки ПРОДАВЕЦ и подарок уже передан менеджеру,
+    # оплата покупателем сразу успешно завершает сделку!
+    if creator_role == "seller" and gift_already_sent:
+        await db.complete_deal(deal_id)
+        seller_id = deal["creator_id"]
+        payout = round(deal["amount"] - deal.get("fee", 0.0), 2)
+        await db.change_user_balance(seller_id, curr_key, payout)
+
+        seller_lang = await db.get_user_language(seller_id) if seller_id else "ru"
+        await callback.answer("✅ Сделка успешно оплачена и завершена!" if lang != "en" else "✅ Deal paid and completed!", show_alert=True)
+
+        if lang == "en":
+            comp_buyer = (
+                f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
+                f"Thank you for trusting us ❤️\n\n"
+                f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+            )
+        else:
+            comp_buyer = (
+                f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
+                f"Спасибо за доверие ❤️\n\n"
+                f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим впечатлением о работе сервиса кнопкой ниже:"
+            )
+
+        if seller_lang == "en":
+            comp_seller = (
+                f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
+                f"💰 Payout of <b>{payout:.2f} {curr['code']}</b> credited to your balance.\n\n"
+                f"Thank you for trusting us ❤️\n\n"
+                f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+            )
+        else:
+            comp_seller = (
+                f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
+                f"💰 Средства в размере <b>{payout:.2f} {curr['code']}</b> зачислены на ваш баланс.\n\n"
+                f"Спасибо за доверие ❤️\n\n"
+                f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим впечатлением о работе сервиса кнопкой ниже:"
+            )
+
+        try:
+            await callback.message.edit_text(comp_buyer, reply_markup=get_deal_completed_keyboard(deal_id, lang=lang), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(comp_buyer, reply_markup=get_deal_completed_keyboard(deal_id, lang=lang), parse_mode="HTML")
+
+        try:
+            await callback.bot.send_message(
+                chat_id=seller_id,
+                text=comp_seller,
+                reply_markup=get_deal_completed_keyboard(deal_id, lang=seller_lang),
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        return
+
+    # ОБЫЧНЫЙ ПОРЯДОК: если покупатель оплатил первым (creator_role == 'buyer')
     success_alert = (
         "✅ Deal successfully paid! Funds safely frozen by escrow."
         if lang == "en"
@@ -1019,7 +1154,6 @@ async def pay_deal_handler(callback: CallbackQuery):
         await callback.message.answer(updated_card, reply_markup=buyer_kb, parse_mode="HTML")
 
     # Уведомляем продавца, что покупатель оплатил и пора передавать подарок менеджеру
-    creator_role = deal.get("creator_role", "seller")
     seller_id = deal["creator_id"] if creator_role == "seller" else deal["buyer_id"]
     if seller_id and seller_id != buyer_id:
         seller_lang = await db.get_user_language(seller_id)
@@ -1082,29 +1216,46 @@ async def seller_gift_done_handler(callback: CallbackQuery):
 
     seller_lang = await db.get_user_language(callback.from_user.id)
     alert_msg = (
-        "Done. Notification sent to buyer for confirmation."
+        "Done. Notification sent to buyer."
         if seller_lang == "en"
-        else "Готово. Покупателю отправлено уведомление для подтверждения."
+        else "Готово. Покупателю отправлено уведомление."
     )
     await callback.answer(alert_msg, show_alert=True)
 
     if buyer_id:
         buyer_lang = await db.get_user_language(buyer_id)
-        if buyer_lang == "en":
-            notif_text = (
-                f"🎁 <b>Seller reported that the gift was transferred to manager @{SUPPORT_USERNAME} for deal #{deal_id}!</b>\n\n"
-                "After confirming receipt with the manager, click the confirmation button below:"
-            )
+        if creator_role == "seller":
+            # Продавец создал сделку и передал подарок -> покупатель оплачивает!
+            if buyer_lang == "en":
+                notif_text = (
+                    f"🎁 <b>Seller reported that the gift was transferred to manager @{SUPPORT_USERNAME} for deal #{deal_id}!</b>\n\n"
+                    f"💳 <b>Please pay for the deal using the button below to complete the exchange and receive your gift:</b>"
+                )
+            else:
+                notif_text = (
+                    f"🎁 <b>Продавец сообщил, что передал подарок менеджеру @{SUPPORT_USERNAME} по сделке #{deal_id}!</b>\n\n"
+                    f"💳 <b>Для получения подарка и завершения сделки оплатите сделку кнопкой ниже:</b>"
+                )
+            kb = get_buyer_payment_keyboard(deal_id, SUPPORT_USERNAME, is_creator=False, lang=buyer_lang)
         else:
-            notif_text = (
-                f"🎁 <b>Продавец сообщил, что передал подарок менеджеру @{SUPPORT_USERNAME} по сделке #{deal_id}!</b>\n\n"
-                "После подтверждения получения товара менеджером нажмите кнопку подтверждения ниже:"
-            )
+            # Покупатель создал сделку и уже оплатил -> подтверждает получение подарка!
+            if buyer_lang == "en":
+                notif_text = (
+                    f"🎁 <b>Seller reported that the gift was transferred to manager @{SUPPORT_USERNAME} for deal #{deal_id}!</b>\n\n"
+                    "After confirming receipt with the manager, click the confirmation button below:"
+                )
+            else:
+                notif_text = (
+                    f"🎁 <b>Продавец сообщил, что передал подарок менеджеру @{SUPPORT_USERNAME} по сделке #{deal_id}!</b>\n\n"
+                    "После подтверждения получения товара менеджером нажмите кнопку подтверждения ниже:"
+                )
+            kb = get_buyer_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=True, lang=buyer_lang)
+
         try:
             await callback.bot.send_message(
                 chat_id=buyer_id,
                 text=notif_text,
-                reply_markup=get_buyer_deal_keyboard(deal_id, SUPPORT_USERNAME, is_creator=(creator_role == "buyer"), lang=buyer_lang),
+                reply_markup=kb,
                 parse_mode="HTML"
             )
         except Exception as e:
@@ -1166,20 +1317,28 @@ async def finish_deal_handler(callback: CallbackQuery):
     await db.complete_deal(deal_id)
 
     # Зачисляем выплату продавцу на баланс
+    curr = get_curr_info(deal.get("currency", "RUB"))
+    payout = round(deal["amount"] - deal.get("fee", 0.0), 2)
     if seller_id:
-        payout = round(deal["amount"] - deal.get("fee", 0.0), 2)
         curr_key = str(deal.get("currency", "RUB")).lower()
         await db.change_user_balance(seller_id, curr_key, payout)
 
     seller_lang = await db.get_user_language(seller_id) if seller_id else "ru"
     buyer_lang = await db.get_user_language(buyer_id) if buyer_id else "ru"
 
-    # 1. Продавцу
+    # 1. Продавцу (с предложением оставить отзыв)
     if seller_id:
         comp_seller = (
-            f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\nThank you for trusting us ❤️"
+            f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
+            f"💰 Payout of <b>{payout:.2f} {curr['code']}</b> credited to your balance.\n\n"
+            f"Thank you for trusting us ❤️\n\n"
+            f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
             if seller_lang == "en"
-            else f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\nСпасибо за доверие ❤️"
+            else
+            f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
+            f"💰 Средства в размере <b>{payout:.2f} {curr['code']}</b> зачислены на ваш баланс.\n\n"
+            f"Спасибо за доверие ❤️\n\n"
+            f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим мнением о работе сервиса кнопкой ниже:"
         )
         try:
             await callback.bot.send_message(
@@ -1191,11 +1350,16 @@ async def finish_deal_handler(callback: CallbackQuery):
         except Exception as e:
             logger.warning(f"Не удалось отправить уведомление продавцу {seller_id}: {e}")
 
-    # 2. Покупателю
+    # 2. Покупателю (с предложением оставить отзыв)
     comp_buyer = (
-        f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\nThank you for trusting us ❤️"
+        f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
+        f"Thank you for trusting us ❤️\n\n"
+        f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
         if buyer_lang == "en"
-        else f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\nСпасибо за доверие ❤️"
+        else
+        f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
+        f"Спасибо за доверие ❤️\n\n"
+        f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим мнением о работе сервиса кнопкой ниже:"
     )
     try:
         await callback.message.edit_text(
@@ -1485,8 +1649,8 @@ async def show_balance(callback: CallbackQuery):
             f"💎 GRAM — {gram:.1f}\n"
             f"💵 USDT — {usdt:.1f}\n"
             f"⭐ Stars — {stars:.1f}\n\n"
-            "❗️ <i>To withdraw funds, at least 2 completed deals are required</i>\n\n"
-            f"📈 Completed deals: {completed}"
+            f"📈 Completed deals: {completed}\n\n"
+            "❗️ <i>To withdraw funds, at least 2 completed deals are required</i>"
         )
     else:
         text = (
@@ -1498,8 +1662,8 @@ async def show_balance(callback: CallbackQuery):
             f"💎 GRAM — {gram:.1f}\n"
             f"💵 USDT — {usdt:.1f}\n"
             f"⭐ Stars — {stars:.1f}\n\n"
-            "❗️ <i>Для вывода средств необходимо минимум 2 завершённые сделки</i>\n\n"
-            f"📈 Завершённых сделок: {completed}"
+            f"📈 Завершённых сделок: {completed}\n\n"
+            "❗️ <i>Для вывода средств необходимо минимум 2 завершённые сделки</i>"
         )
 
     try:
@@ -1510,10 +1674,12 @@ async def show_balance(callback: CallbackQuery):
 
 
 @dp.callback_query(F.data == "withdraw_funds")
-async def withdraw_funds_handler(callback: CallbackQuery):
+async def withdraw_funds_handler(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     user_id = callback.from_user.id
     lang = await db.get_user_language(user_id)
     user = await db.get_or_create_user(user_id)
+
     if user.get("completed_deals", 0) < 2:
         msg = (
             "❗️ To withdraw funds, at least 2 completed deals are required."
@@ -1521,9 +1687,201 @@ async def withdraw_funds_handler(callback: CallbackQuery):
             else "❗️ Для вывода средств необходимо минимум 2 завершённые сделки."
         )
         await callback.answer(msg, show_alert=True)
+        return
+
+    # Выбор валюты для вывода
+    if lang == "en":
+        text = (
+            "💸 <b>Withdraw Funds</b>\n\n"
+            "Select the currency you want to withdraw:"
+        )
+        back_btn = "◀️ Back to Balance"
     else:
-        msg = "Withdrawal request submitted to administrator." if lang == "en" else "Заявка на вывод отправлена администратору."
-        await callback.answer(msg, show_alert=True)
+        text = (
+            "💸 <b>Вывод средств</b>\n\n"
+            "Выберите валюту, которую хотите вывести:"
+        )
+        back_btn = "◀️ Назад в баланс"
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🇷🇺 RUB", callback_data="w_draw_curr_rub"),
+                InlineKeyboardButton(text="🇺🇦 UAH", callback_data="w_draw_curr_uah"),
+            ],
+            [
+                InlineKeyboardButton(text="🇧🇾 BYN", callback_data="w_draw_curr_byn"),
+                InlineKeyboardButton(text="🇰🇿 KZT", callback_data="w_draw_curr_kzt"),
+            ],
+            [
+                InlineKeyboardButton(text="💎 GRAM", callback_data="w_draw_curr_gram"),
+                InlineKeyboardButton(text="💵 USDT", callback_data="w_draw_curr_usdt"),
+            ],
+            [
+                InlineKeyboardButton(text="⭐ Stars", callback_data="w_draw_curr_stars"),
+            ],
+            [InlineKeyboardButton(text=back_btn, callback_data="balance")],
+        ]
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("w_draw_curr_"))
+async def withdraw_select_currency_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    lang = await db.get_user_language(user_id)
+    user = await db.get_or_create_user(user_id)
+    curr_key = callback.data.replace("w_draw_curr_", "").strip()
+    curr = get_curr_info(curr_key)
+
+    req_col = f"req_{curr_key}"
+    req_val = user.get(req_col)
+
+    # Проверка привязки реквизитов: если не добавлены — вывод запрещен!
+    if not req_val or not str(req_val).strip():
+        if lang == "en":
+            err_text = (
+                f"❌ <b>Withdrawal Error!</b>\n\n"
+                f"You have not linked payout requisites for <b>{curr['name']} ({curr['code']})</b>.\n\n"
+                f"❗️ Requisites are required to process a withdrawal. Please link them first in «🪪 Requisites»."
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=f"🪪 Link {curr['code']} requisites", callback_data=f"set_req_{curr_key}")],
+                    [InlineKeyboardButton(text="◀️ Back to Balance", callback_data="balance")],
+                ]
+            )
+        else:
+            err_text = (
+                f"❌ <b>Ошибка вывода средств!</b>\n\n"
+                f"У вас не привязаны реквизиты для вывода валюты <b>{curr['name']} ({curr['code']})</b>.\n\n"
+                f"❗️ Без привязанных реквизитов вывод невозможен. Пожалуйста, сначала привяжите их в разделе «🪪 Мои реквизиты»."
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=f"🪪 Привязать реквизиты {curr['code']}", callback_data=f"set_req_{curr_key}")],
+                    [InlineKeyboardButton(text="◀️ Назад в баланс", callback_data="balance")],
+                ]
+            )
+        try:
+            await callback.message.edit_text(err_text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(err_text, reply_markup=kb, parse_mode="HTML")
+        await callback.answer()
+        return
+
+    bal_col = db.get_balance_column(curr_key)
+    user_bal = user.get(bal_col, 0.0)
+
+    await state.update_data(
+        withdraw_curr_key=curr_key,
+        withdraw_req=req_val,
+        withdraw_user_bal=user_bal
+    )
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="◀️ Отмена" if lang != "en" else "◀️ Cancel", callback_data="balance")]]
+    )
+
+    if lang == "en":
+        text = (
+            f"💸 <b>Withdraw funds — {curr['name']} ({curr['code']})</b>\n\n"
+            f"💳 <b>Payout to:</b> <code>{req_val}</code>\n"
+            f"💰 <b>Available on balance:</b> <code>{user_bal:.2f} {curr['code']}</code>\n\n"
+            f"Enter the amount you wish to withdraw in reply to this message:"
+        )
+    else:
+        text = (
+            f"💸 <b>Вывод средств — {curr['name']} ({curr['code']})</b>\n\n"
+            f"💳 <b>Куда вывести:</b> <code>{req_val}</code>\n"
+            f"💰 <b>Доступно на балансе:</b> <code>{user_bal:.2f} {curr['code']}</code>\n\n"
+            f"Введите сумму, которую хотите вывести, ответным сообщением:"
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=cancel_kb, parse_mode="HTML")
+    await state.set_state(WithdrawStates.waiting_for_amount)
+    await callback.answer()
+
+
+@dp.message(WithdrawStates.waiting_for_amount)
+async def process_withdraw_amount(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    lang = await db.get_user_language(user_id)
+    data = await state.get_data()
+
+    curr_key = data.get("withdraw_curr_key", "rub")
+    req_val = data.get("withdraw_req", "Не указаны")
+    curr = get_curr_info(curr_key)
+
+    try:
+        amount = float(message.text.strip().replace(",", "."))
+        if amount <= 0:
+            raise ValueError()
+    except ValueError:
+        msg = "❌ Введите корректное положительное число:" if lang != "en" else "❌ Please enter a valid positive number:"
+        await message.answer(msg)
+        return
+
+    user = await db.get_or_create_user(user_id)
+    bal_col = db.get_balance_column(curr_key)
+    current_balance = user.get(bal_col, 0.0)
+
+    if current_balance < amount:
+        if lang == "en":
+            err = (
+                f"❌ <b>Insufficient funds!</b>\n\n"
+                f"Requested: {amount:.2f} {curr['code']}\n"
+                f"Available on balance: {current_balance:.2f} {curr['code']}"
+            )
+        else:
+            err = (
+                f"❌ <b>Недостаточно средств на балансе!</b>\n\n"
+                f"Запрошено: {amount:.2f} {curr['code']}\n"
+                f"Доступно на балансе: {current_balance:.2f} {curr['code']}"
+            )
+        await message.answer(err, reply_markup=get_back_keyboard(lang), parse_mode="HTML")
+        await state.clear()
+        return
+
+    # Списываем средства с баланса
+    new_bal = await db.change_user_balance(user_id, curr_key, -amount)
+    await state.clear()
+
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💰 К балансу" if lang != "en" else "💰 To Balance", callback_data="balance")],
+            [InlineKeyboardButton(text="◀️ В главное меню" if lang != "en" else "◀️ Main Menu", callback_data="back_to_menu")],
+        ]
+    )
+
+    if lang == "en":
+        success_text = (
+            f"✅ <b>Withdrawal request created successfully!</b>\n\n"
+            f"💰 <b>Amount:</b> <code>{amount:.2f} {curr['code']}</code>\n"
+            f"💳 <b>Requisites:</b> <code>{req_val}</code>\n"
+            f"📊 <b>Remaining balance:</b> <code>{new_bal:.2f} {curr['code']}</code>\n"
+            f"⏳ <b>Status:</b> In processing (typically 5 to 30 min)\n\n"
+            f"Technical support: @{SUPPORT_USERNAME}"
+        )
+    else:
+        success_text = (
+            f"✅ <b>Заявка на вывод средств успешно создана!</b>\n\n"
+            f"💰 <b>Сумма к выводу:</b> <code>{amount:.2f} {curr['code']}</code>\n"
+            f"💳 <b>Реквизиты:</b> <code>{req_val}</code>\n"
+            f"📊 <b>Остаток на балансе:</b> <code>{new_bal:.2f} {curr['code']}</code>\n"
+            f"⏳ <b>Статус:</b> В обработке (обычно 5–30 минут)\n\n"
+            f"Менеджер техподдержки: @{SUPPORT_USERNAME}"
+        )
+
+    await message.answer(success_text, reply_markup=back_kb, parse_mode="HTML")
 
 
 @dp.callback_query(F.data == "transactions")
@@ -1551,7 +1909,21 @@ async def show_my_deals(callback: CallbackQuery):
     deals = await db.get_user_deals(user_id)
 
     if not deals:
-        text = "📋 You have no deals." if lang == "en" else "📋 У вас нет сделок."
+        user = await db.get_or_create_user(user_id)
+        comp = user.get("completed_deals", 0)
+        if comp > 0:
+            text = (
+                f"📋 <b>Your deals:</b>\n\n"
+                f"📈 Total completed deals: <b>{comp}</b>\n\n"
+                f"<i>(Archive of completed deals stored securely)</i>"
+                if lang == "en"
+                else
+                f"📋 <b>Ваши сделки:</b>\n\n"
+                f"📈 Всего успешных сделок: <b>{comp}</b>\n\n"
+                f"<i>(Архив проведённых сделок сохранён)</i>"
+            )
+        else:
+            text = "📋 You have no deals." if lang == "en" else "📋 У вас нет сделок."
         keyboard = get_back_keyboard(lang)
     else:
         text = "📋 <b>Your deals:</b>\n\n" if lang == "en" else "📋 <b>Ваши сделки:</b>\n\n"
@@ -1598,14 +1970,8 @@ async def show_my_deals(callback: CallbackQuery):
                 is_paid = d.get("is_paid", 0)
                 gift_sent = d.get("gift_sent", 0)
 
-                if not is_paid:
-                    if is_seller:
-                        wait_pay_text = f"⏳ Wait payment #{d['deal_id']}" if lang == "en" else f"⏳ Ждём оплату #{d['deal_id']}"
-                        buttons.append([InlineKeyboardButton(text=wait_pay_text, callback_data="seller_waiting_payment_notice")])
-                    else:
-                        pay_text = f"💳 Pay #{d['deal_id']}" if lang == "en" else f"💳 Оплатить #{d['deal_id']}"
-                        buttons.append([InlineKeyboardButton(text=pay_text, callback_data=f"pay_deal_{d['deal_id']}")])
-                else:
+                if creator_role == "seller":
+                    # Продавец передает подарок первым
                     if not gift_sent:
                         if is_seller:
                             tr_text = f"📦 Transfer #{d['deal_id']} ↗" if lang == "en" else f"📦 Передать #{d['deal_id']} ↗"
@@ -1616,15 +1982,44 @@ async def show_my_deals(callback: CallbackQuery):
                             wait_gift_text = f"⏳ Wait gift #{d['deal_id']}" if lang == "en" else f"⏳ Ждём подарок #{d['deal_id']}"
                             buttons.append([InlineKeyboardButton(text=wait_gift_text, callback_data="buyer_waiting_notice")])
                     else:
-                        if is_seller:
-                            wait_cf_text = f"⏳ Wait confirm #{d['deal_id']}" if lang == "en" else f"⏳ Ждём подтверждения #{d['deal_id']}"
-                            buttons.append([InlineKeyboardButton(text=wait_cf_text, callback_data="buyer_waiting_notice")])
+                        if not is_seller:
+                            pay_text = f"💳 Pay #{d['deal_id']}" if lang == "en" else f"💳 Оплатить #{d['deal_id']}"
+                            buttons.append([InlineKeyboardButton(text=pay_text, callback_data=f"pay_deal_{d['deal_id']}")])
                         else:
-                            cf_text = f"✅ Confirm #{d['deal_id']}" if lang == "en" else f"✅ Подтвердить #{d['deal_id']}"
-                            buttons.append([InlineKeyboardButton(text=cf_text, callback_data=f"finish_deal_{d['deal_id']}")])
+                            wait_pay_text = f"⏳ Wait payment #{d['deal_id']}" if lang == "en" else f"⏳ Ждём оплату #{d['deal_id']}"
+                            buttons.append([InlineKeyboardButton(text=wait_pay_text, callback_data="seller_waiting_payment_notice")])
+                else:
+                    # Покупатель оплачивает первым
+                    if not is_paid:
+                        if is_seller:
+                            wait_pay_text = f"⏳ Wait payment #{d['deal_id']}" if lang == "en" else f"⏳ Ждём оплату #{d['deal_id']}"
+                            buttons.append([InlineKeyboardButton(text=wait_pay_text, callback_data="seller_waiting_payment_notice")])
+                        else:
+                            pay_text = f"💳 Pay #{d['deal_id']}" if lang == "en" else f"💳 Оплатить #{d['deal_id']}"
+                            buttons.append([InlineKeyboardButton(text=pay_text, callback_data=f"pay_deal_{d['deal_id']}")])
+                    else:
+                        if not gift_sent:
+                            if is_seller:
+                                tr_text = f"📦 Transfer #{d['deal_id']} ↗" if lang == "en" else f"📦 Передать #{d['deal_id']} ↗"
+                                dn_text = f"✅ Done #{d['deal_id']}" if lang == "en" else f"✅ Готово #{d['deal_id']}"
+                                buttons.append([InlineKeyboardButton(text=tr_text, url=f"https://t.me/{SUPPORT_USERNAME}")])
+                                buttons.append([InlineKeyboardButton(text=dn_text, callback_data=f"seller_gift_done_{d['deal_id']}")])
+                            else:
+                                wait_gift_text = f"⏳ Wait gift #{d['deal_id']}" if lang == "en" else f"⏳ Ждём подарок #{d['deal_id']}"
+                                buttons.append([InlineKeyboardButton(text=wait_gift_text, callback_data="buyer_waiting_notice")])
+                        else:
+                            if is_seller:
+                                wait_cf_text = f"⏳ Wait confirm #{d['deal_id']}" if lang == "en" else f"⏳ Ждём подтверждения #{d['deal_id']}"
+                                buttons.append([InlineKeyboardButton(text=wait_cf_text, callback_data="buyer_waiting_notice")])
+                            else:
+                                cf_text = f"✅ Confirm #{d['deal_id']}" if lang == "en" else f"✅ Подтвердить #{d['deal_id']}"
+                                buttons.append([InlineKeyboardButton(text=cf_text, callback_data=f"finish_deal_{d['deal_id']}")])
 
                 cn_text = f"❌ Cancel #{d['deal_id']}" if lang == "en" else f"❌ Отказаться #{d['deal_id']}"
                 buttons.append([InlineKeyboardButton(text=cn_text, callback_data=f"cancel_deal_{d['deal_id']}")])
+            elif d["status"] == "completed":
+                rev_text = f"💬 Review #{d['deal_id']}" if lang == "en" else f"💬 Оставить отзыв #{d['deal_id']}"
+                buttons.append([InlineKeyboardButton(text=rev_text, callback_data=f"leave_review_{d['deal_id']}")])
 
         back_text = "◀️ Back to menu" if lang == "en" else "◀️ Назад в меню"
         buttons.append([InlineKeyboardButton(text=back_text, callback_data="back_to_menu")])
@@ -1782,6 +2177,86 @@ async def process_requisite_value(message: Message, state: FSMContext):
     await message.answer(thanks_text, reply_markup=back_kb, parse_mode="HTML")
 
 
+# ------------------ Раздел «Профиль» ------------------
+
+@dp.callback_query(F.data == "profile")
+async def show_profile(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    lang = await db.get_user_language(user_id)
+    user = await db.get_or_create_user(user_id, callback.from_user.username, callback.from_user.full_name)
+    bot_info = await callback.bot.get_me()
+    ref_count = await db.get_referral_stats(user_id)
+    ref_link = f"https://t.me/{bot_info.username}?start=ref_{user_id}"
+
+    rub = user.get("balance_rub", 0.0)
+    uah = user.get("balance_uah", 0.0)
+    byn = user.get("balance_byn", 0.0)
+    kzt = user.get("balance_kzt", 0.0)
+    gram = user.get("balance_gram", 0.0)
+    usdt = user.get("balance_usdt", 0.0)
+    stars = user.get("balance_stars", 0.0)
+    completed = user.get("completed_deals", 0)
+
+    username_str = f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь")
+
+    if lang == "en":
+        text = (
+            f"👤 <b>User Profile</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            f"👤 <b>Username:</b> {username_str}\n"
+            f"📈 <b>Completed deals:</b> <b>{completed}</b>\n\n"
+            f"💰 <b>Balances:</b>\n"
+            f"💳 RUB: {rub:.2f}\n"
+            f"🇺🇦 UAH: {uah:.2f}\n"
+            f"🇧🇾 BYN: {byn:.2f}\n"
+            f"🇰🇿 KZT: {kzt:.2f}\n"
+            f"💎 GRAM: {gram:.2f}\n"
+            f"💵 USDT: {usdt:.2f}\n"
+            f"⭐ Stars: {stars:.2f}\n\n"
+            f"👥 <b>Referral Program:</b>\n"
+            f"• Invited users: <b>{ref_count}</b>\n"
+            f"• Reward: <b>50%</b> of service fees\n"
+            f"🔗 <b>Your referral link:</b>\n<code>{ref_link}</code>"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👥 Referral Details", callback_data="referrals")],
+                [InlineKeyboardButton(text="◀️ Back to menu", callback_data="back_to_menu")],
+            ]
+        )
+    else:
+        text = (
+            f"👤 <b>Профиль пользователя</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            f"👤 <b>Юзернейм:</b> {username_str}\n"
+            f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n\n"
+            f"💰 <b>Балансы:</b>\n"
+            f"💳 RUB: {rub:.2f}\n"
+            f"🇺🇦 UAH: {uah:.2f}\n"
+            f"🇧🇾 BYN: {byn:.2f}\n"
+            f"🇰🇿 KZT: {kzt:.2f}\n"
+            f"💎 GRAM: {gram:.2f}\n"
+            f"💵 USDT: {usdt:.2f}\n"
+            f"⭐ Stars: {stars:.2f}\n\n"
+            f"👥 <b>Реферальная программа:</b>\n"
+            f"• Приглашено пользователей: <b>{ref_count}</b>\n"
+            f"• Награда: <b>50%</b> от комиссии сервиса\n"
+            f"🔗 <b>Ваша реферальная ссылка:</b>\n<code>{ref_link}</code>"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👥 Подробнее о рефералах", callback_data="referrals")],
+                [InlineKeyboardButton(text="◀️ Назад в меню", callback_data="back_to_menu")],
+            ]
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
 # ------------------ Раздел «Рефералы» ------------------
 
 @dp.callback_query(F.data == "referrals")
@@ -1828,7 +2303,7 @@ async def show_reviews(callback: CallbackQuery):
             "💬 <b>Reviews:</b>\n\n"
             f"You can read all verified reviews in our official channel:\n"
             f"👉 <b>t.me/{REVIEWS_CHANNEL}</b>\n\n"
-            f"To submit a review, contact our manager @{SUPPORT_USERNAME} or leave feedback after completing a deal."
+            f"You can also leave a review through manager — @{SUPPORT_USERNAME}, or after completing a deal in the bot."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -1841,7 +2316,7 @@ async def show_reviews(callback: CallbackQuery):
             "💬 <b>Отзывы о сервисе:</b>\n\n"
             f"Ознакомиться со всеми отзывами вы можете в нашем официальном канале:\n"
             f"👉 <b>t.me/{REVIEWS_CHANNEL}</b>\n\n"
-            f"Также оставить отзыв можно через менеджера @{SUPPORT_USERNAME} или после завершения сделки."
+            f"Также оставить отзыв можно через менеджера — @{SUPPORT_USERNAME}, или же после завершения сделки в боте."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -1936,13 +2411,13 @@ async def back_to_menu_handler(callback: CallbackQuery, state: FSMContext):
 @dp.message(Command("balance"))
 async def worker_balance_cmd(message: Message, state: FSMContext):
     """
-    Команда /balance для воркеров:
-    /balance - меню выбора валюты и ввода суммы
-    /balance 5000 - установить 5000 RUB на свой баланс
-    /balance 5000 uah - установить 5000 UAH
-    /balance 100 usdt - установить 100 USDT
-    /balance @username 5000 rub - установить баланс пользователю
-    /balance 12345678 100 stars - установить баланс по Telegram ID
+    Команда /balance для воркеров (пополнение баланса):
+    /balance - меню выбора валюты и ввода суммы пополнения
+    /balance 5000 - пополнить на 5000 RUB свой баланс
+    /balance 5000 uah - пополнить на 5000 UAH
+    /balance 100 usdt - пополнить на 100 USDT
+    /balance @username 5000 rub - пополнить баланс пользователю
+    /balance 12345678 100 stars - пополнить баланс по Telegram ID
     """
     await state.clear()
     args = message.text.split()[1:]
@@ -1964,6 +2439,8 @@ async def worker_balance_cmd(message: Message, state: FSMContext):
         if len(args) >= 1:
             try:
                 amount = float(args[0].replace(",", "."))
+                if amount <= 0:
+                    raise ValueError()
             except ValueError:
                 await message.answer("❌ Неверный формат суммы. Пример: <code>/balance 5000 rub</code>", parse_mode="HTML")
                 return
@@ -1972,12 +2449,13 @@ async def worker_balance_cmd(message: Message, state: FSMContext):
             curr_key = args[1].lower()
 
         curr = get_curr_info(curr_key)
-        await db.set_user_balance(target_id, curr_key, amount)
+        new_balance = await db.change_user_balance(target_id, curr_key, amount)
         await message.answer(
-            f"✅ <b>Баланс успешно обновлен!</b>\n\n"
+            f"✅ <b>Баланс успешно пополнен!</b>\n\n"
             f"👤 ID пользователя: <code>{target_id}</code>\n"
             f"{curr['flag']} Валюта: <b>{curr['name']} ({curr['code']})</b>\n"
-            f"💰 Установлен баланс: <b>{amount:.2f} {curr['code']}</b>",
+            f"➕ Пополнение: <b>+{amount:.2f} {curr['code']}</b>\n"
+            f"💰 Новый баланс: <b>{new_balance:.2f} {curr['code']}</b>",
             parse_mode="HTML"
         )
         return
@@ -2004,8 +2482,8 @@ async def worker_balance_cmd(message: Message, state: FSMContext):
         ]
     )
     await message.answer(
-        "🛠 <b>Панель воркера: Изменение баланса</b>\n\n"
-        "Выберите валюту, баланс которой хотите пополнить / изменить:\n"
+        "🛠 <b>Панель воркера: Пополнение баланса</b>\n\n"
+        "Выберите валюту для пополнения:\n"
         "<i>(Или введите сразу: <code>/balance 5000 rub</code>)</i>",
         reply_markup=kb,
         parse_mode="HTML"
@@ -2022,7 +2500,7 @@ async def worker_bal_select_curr(callback: CallbackQuery, state: FSMContext):
     )
     await callback.message.edit_text(
         f"💰 <b>Выбрана валюта: {curr['flag']} {curr['name']} ({curr['code']})</b>\n\n"
-        f"Введите новую сумму баланса (например: <code>5000</code> или <code>250.5</code>):",
+        f"Введите сумму пополнения (например: <code>1000</code> или <code>250.5</code>):",
         reply_markup=cancel_kb,
         parse_mode="HTML"
     )
@@ -2037,15 +2515,18 @@ async def worker_bal_save_amount(message: Message, state: FSMContext):
     curr = get_curr_info(curr_key)
     try:
         val = float(message.text.strip().replace(",", "."))
+        if val <= 0:
+            raise ValueError()
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите корректное число (например: <code>5000</code>):", parse_mode="HTML")
+        await message.answer("❌ Пожалуйста, введите положительное число (например: <code>1000</code>):", parse_mode="HTML")
         return
 
     await state.clear()
-    await db.set_user_balance(message.from_user.id, curr_key, val)
+    new_bal = await db.change_user_balance(message.from_user.id, curr_key, val)
     await message.answer(
-        f"✅ <b>Баланс успешно установлен!</b>\n\n"
-        f"{curr['flag']} <b>{curr['name']} ({curr['code']}):</b> <b>{val:.2f} {curr['code']}</b>",
+        f"✅ <b>Баланс успешно пополнен!</b>\n\n"
+        f"{curr['flag']} <b>{curr['name']} ({curr['code']}):</b> <b>+{val:.2f} {curr['code']}</b>\n"
+        f"💰 <b>Текущий баланс:</b> <b>{new_bal:.2f} {curr['code']}</b>",
         reply_markup=get_back_keyboard(),
         parse_mode="HTML"
     )
@@ -2054,37 +2535,40 @@ async def worker_bal_save_amount(message: Message, state: FSMContext):
 @dp.message(Command("deals"))
 async def worker_deals_cmd(message: Message, state: FSMContext):
     """
-    Команда /deals для воркеров:
-    /deals - интерактивный ввод количества проведённых сделок
-    /deals 10 - установить 10 проведённых сделок для себя
-    /deals @username 10 - установить 10 проведённых сделок для пользователя
+    Команда /deals для воркеров (добавление проведённых сделок):
+    /deals - интерактивный ввод количества сделок
+    /deals 6 - добавить 6 проведённых сделок себе
+    /deals @username 6 - добавить 6 проведённых сделок пользователю
     """
     await state.clear()
-    args = message.text.split()[1:]
-    if args:
+    raw_args = message.text.split()[1:]
+    if raw_args:
         target_id = message.from_user.id
-        if args[0].startswith("@") or (args[0].isdigit() and len(args[0]) > 6 and len(args) > 1):
-            target_user = await db.find_user_by_identifier(args[0])
+        first = raw_args[0]
+        if first.startswith("@") or (first.isdigit() and len(first) > 6 and len(raw_args) > 1):
+            target_user = await db.find_user_by_identifier(first)
             if target_user:
                 target_id = target_user["user_id"]
-                args = args[1:]
+                raw_args = raw_args[1:]
             else:
-                await message.answer(f"❌ Пользователь <code>{args[0]}</code> не найден.", parse_mode="HTML")
+                await message.answer(f"❌ Пользователь <code>{first}</code> не найден.", parse_mode="HTML")
                 return
 
         try:
-            cnt = int(args[0])
-            if cnt < 0:
+            cnt = int(raw_args[0])
+            if cnt <= 0:
                 raise ValueError()
-        except ValueError:
-            await message.answer("❌ Введите целое неотрицательное число. Пример: <code>/deals 10</code>", parse_mode="HTML")
+        except (ValueError, IndexError):
+            await message.answer("❌ Введите целое положительное число. Пример: <code>/deals 6</code>", parse_mode="HTML")
             return
 
-        await db.set_user_deals_count(target_id, cnt)
+        total = await db.add_user_deals_count(target_id, cnt)
         await message.answer(
-            f"✅ <b>Количество сделок успешно обновлено!</b>\n\n"
+            f"✅ <b>Сделки успешно добавлены!</b>\n\n"
             f"👤 ID: <code>{target_id}</code>\n"
-            f"📈 Завершённых сделок в профиле: <b>{cnt}</b>",
+            f"➕ Добавлено сделок: <b>+{cnt}</b>\n"
+            f"📈 Всего завершённых сделок: <b>{total}</b>\n\n"
+            f"<i>Записи сделок добавлены в раздел «📋 Мои сделки»</i>",
             parse_mode="HTML"
         )
         return
@@ -2093,9 +2577,9 @@ async def worker_deals_cmd(message: Message, state: FSMContext):
         inline_keyboard=[[InlineKeyboardButton(text="◀️ Отмена", callback_data="back_to_menu")]]
     )
     await message.answer(
-        "📈 <b>Панель воркера: Количество сделок</b>\n\n"
-        "Введите количество проведённых сделок, которое хотите отображать в профиле:\n"
-        "<i>(Или введите сразу: <code>/deals 5</code>)</i>",
+        "📈 <b>Панель воркера: Добавление сделок</b>\n\n"
+        "Введите количество сделок для добавления:\n"
+        "<i>(Или введите: <code>6</code> или <code>@username 6</code>)</i>",
         reply_markup=cancel_kb,
         parse_mode="HTML"
     )
@@ -2104,19 +2588,39 @@ async def worker_deals_cmd(message: Message, state: FSMContext):
 
 @dp.message(WorkerStates.waiting_for_deals_count)
 async def worker_deals_save_count(message: Message, state: FSMContext):
+    text_parts = message.text.strip().split()
+    target_id = message.from_user.id
+
+    if not text_parts:
+        await message.answer("❌ Введите число:", parse_mode="HTML")
+        return
+
+    first = text_parts[0]
+    if first.startswith("@") or (first.isdigit() and len(first) > 6 and len(text_parts) > 1):
+        target_user = await db.find_user_by_identifier(first)
+        if target_user:
+            target_id = target_user["user_id"]
+            text_parts = text_parts[1:]
+        else:
+            await message.answer(f"❌ Пользователь <code>{first}</code> не найден. Попробуйте еще раз:", parse_mode="HTML")
+            return
+
     try:
-        cnt = int(message.text.strip())
-        if cnt < 0:
+        cnt = int(text_parts[0])
+        if cnt <= 0:
             raise ValueError()
-    except ValueError:
-        await message.answer("❌ Введите целое положительное число (например: <code>5</code>):", parse_mode="HTML")
+    except (ValueError, IndexError):
+        await message.answer("❌ Введите целое положительное число (например: <code>6</code>):", parse_mode="HTML")
         return
 
     await state.clear()
-    await db.set_user_deals_count(message.from_user.id, cnt)
+    total = await db.add_user_deals_count(target_id, cnt)
     await message.answer(
-        f"✅ <b>Количество сделок обновлено!</b>\n\n"
-        f"📈 Завершённых сделок в профиле: <b>{cnt}</b>",
+        f"✅ <b>Сделки успешно добавлены!</b>\n\n"
+        f"👤 ID: <code>{target_id}</code>\n"
+        f"➕ Добавлено сделок: <b>+{cnt}</b>\n"
+        f"📈 Всего завершённых сделок: <b>{total}</b>\n\n"
+        f"<i>Записи сделок добавлены в раздел «📋 Мои сделки»</i>",
         reply_markup=get_back_keyboard(),
         parse_mode="HTML"
     )

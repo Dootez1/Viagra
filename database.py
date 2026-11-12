@@ -217,7 +217,10 @@ async def complete_deal(deal_id: str):
         async with db.execute("SELECT * FROM deals WHERE deal_id = ?", (deal_id,)) as cursor:
             deal = await cursor.fetchone()
             if deal:
-                await db.execute("UPDATE deals SET status = 'completed' WHERE deal_id = ?", (deal_id,))
+                await db.execute(
+                    "UPDATE deals SET status = 'completed', is_paid = 1, gift_sent = 1 WHERE deal_id = ?",
+                    (deal_id,)
+                )
                 # Увеличиваем счетчик завершенных сделок для обеих сторон
                 creator_id = deal["creator_id"]
                 buyer_id = deal["buyer_id"]
@@ -319,6 +322,34 @@ async def set_user_deals_count(user_id: int, count: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE users SET completed_deals = ? WHERE user_id = ?", (max(0, int(count)), user_id))
         await db.commit()
+
+
+async def add_user_deals_count(user_id: int, count: int, currency: str = "RUB") -> int:
+    import string, random
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT completed_deals, username, full_name FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            curr_deals = user["completed_deals"] if user and user["completed_deals"] is not None else 0
+            u_name = user["full_name"] if user and user["full_name"] else (user["username"] if user and user["username"] else "Участник")
+        
+        new_cnt = max(0, curr_deals + int(count))
+        await db.execute("UPDATE users SET completed_deals = ? WHERE user_id = ?", (new_cnt, user_id))
+        
+        # Insert completed deals so user's 'My deals' list is populated
+        chars = string.ascii_lowercase + string.digits
+        for _ in range(min(count, 15)):
+            d_id = "".join(random.choices(chars, k=10))
+            amt = random.choice([1500.0, 2500.0, 3200.0, 4800.0, 5000.0])
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO deals (deal_id, creator_id, creator_name, creator_role, amount, currency, fee, item_link, status, is_paid, gift_sent)
+                VALUES (?, ?, ?, 'seller', ?, ?, ?, 'Telegram NFT Gift', 'completed', 1, 1)
+                """,
+                (d_id, user_id, u_name, amt, currency, round(amt * 0.03, 2))
+            )
+        await db.commit()
+        return new_cnt
 
 
 async def find_user_by_identifier(identifier: str):

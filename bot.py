@@ -2316,6 +2316,17 @@ async def show_profile(callback: CallbackQuery):
     stars = user.get("balance_stars", 0.0)
     completed = user.get("completed_deals", 0)
 
+    raw_created = user.get("created_at")
+    try:
+        if raw_created:
+            dt_part = str(raw_created).split()[0]
+            parts = dt_part.split("-")
+            reg_date = f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else str(raw_created)[:10]
+        else:
+            reg_date = "12.11.2026"
+    except Exception:
+        reg_date = "12.11.2026"
+
     username_str = f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь")
 
     if lang == "en":
@@ -2323,15 +2334,8 @@ async def show_profile(callback: CallbackQuery):
             f"👤 <b>User Profile — Hyped Deals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Username:</b> {username_str}\n"
-            f"📈 <b>Completed deals:</b> <b>{completed}</b>\n\n"
-            f"💰 <b>Your balances:</b>\n"
-            f"🇷🇺 RUB: <b>{rub:.2f}</b>\n"
-            f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
-            f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
-            f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"
-            f"💎 GRAM: <b>{gram:.2f}</b>\n"
-            f"💵 USDT: <b>{usdt:.2f}</b>\n"
-            f"⭐ Stars: <b>{stars:.2f}</b>\n\n"
+            f"📅 <b>Registration date:</b> <b>{reg_date}</b>\n"
+            f"📈 <b>Completed deals:</b> <b>{completed}</b>\n"
             f"👥 <b>Referrals:</b> <b>{ref_count}</b> users invited"
         )
         kb = InlineKeyboardMarkup(
@@ -2346,15 +2350,8 @@ async def show_profile(callback: CallbackQuery):
             f"👤 <b>Профиль пользователя — Hyped Deals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Юзернейм:</b> {username_str}\n"
-            f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n\n"
-            f"💰 <b>Ваши балансы:</b>\n"
-            f"🇷🇺 RUB: <b>{rub:.2f}</b>\n"
-            f"🇺🇦 UAH: <b>{uah:.2f}</b>\n"
-            f"🇧🇾 BYN: <b>{byn:.2f}</b>\n"
-            f"🇰🇿 KZT: <b>{kzt:.2f}</b>\n"
-            f"💎 GRAM: <b>{gram:.2f}</b>\n"
-            f"💵 USDT: <b>{usdt:.2f}</b>\n"
-            f"⭐ Stars: <b>{stars:.2f}</b>\n\n"
+            f"📅 <b>Дата регистрации:</b> <b>{reg_date}</b>\n"
+            f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n"
             f"👥 <b>Рефералы:</b> <b>{ref_count}</b> чел. приглашено"
         )
         kb = InlineKeyboardMarkup(
@@ -2407,10 +2404,10 @@ async def show_deposit_methods(callback: CallbackQuery):
             "<code>2202 2088 1003 8217</code>\n\n"
             "🇺🇦 <b>Ukrainian card (PrivatBank):</b>\n"
             "<code>4731 2171 1109 2944</code>\n\n"
-            "🇰🇿 <b>Kazakhstan card:</b>\n"
+            "🇰🇿 <b>Kazakhstan card (Kaspi Gold):</b>\n"
             "<code>4400 4301 1964 9553</code>\n\n"
-            "🇧🇾 <b>Belarus card (Belarusbank):</b>\n"
-            f"Issued on request via manager @{SUPPORT_USERNAME}\n\n"
+            "🇧🇾 <b>Belarus card (BelarusBank):</b>\n"
+            "<code>4255 1905 8030 6168</code>\n\n"
             "💎 <b>Crypto (USDT TRC-20 / TON / GRAM):</b>\n"
             f"Issued on request via manager @{SUPPORT_USERNAME}\n\n"
             "⭐ <b>Telegram Stars:</b>\n"
@@ -2424,8 +2421,8 @@ async def show_deposit_methods(callback: CallbackQuery):
                     InlineKeyboardButton(text="🇺🇦 PrivatBank", callback_data="dep_privat"),
                 ],
                 [
-                    InlineKeyboardButton(text="🇰🇿 Kazakhstan Card", callback_data="dep_kzt"),
-                    InlineKeyboardButton(text="🇧🇾 Belarusbank", callback_data="dep_byn"),
+                    InlineKeyboardButton(text="🇰🇿 Kaspi Gold", callback_data="dep_kzt"),
+                    InlineKeyboardButton(text="🇧🇾 BelarusBank", callback_data="dep_byn"),
                 ],
                 [
                     InlineKeyboardButton(text="💎 Crypto Wallet", callback_data="dep_crypto"),
@@ -2440,14 +2437,14 @@ async def show_deposit_methods(callback: CallbackQuery):
         text = (
             "💳 <b>Пополнение баланса — Официальные реквизиты</b>\n\n"
             "Выберите способ пополнения ниже или переведите средства по официальным реквизитам сервиса:\n\n"
-            "🇷🇺 <b>Российская карта (Сбербанк):</b>\n"
+            "🇷🇺 <b>Российская карта (СберБанк):</b>\n"
             "<code>2202 2088 1003 8217</code>\n\n"
             "🇺🇦 <b>Украинская карта (ПриватБанк):</b>\n"
             "<code>4731 2171 1109 2944</code>\n\n"
-            "🇰🇿 <b>Казахстанская карта:</b>\n"
+            "🇰🇿 <b>Казахстанская карта (Каспи Голд):</b>\n"
             "<code>4400 4301 1964 9553</code>\n\n"
-            "🇧🇾 <b>Белорусская карта (Беларусбанк):</b>\n"
-            f"Реквизиты выдаются у менеджера @{SUPPORT_USERNAME}\n\n"
+            "🇧🇾 <b>Белорусская карта (БеларусБанк):</b>\n"
+            "<code>4255 1905 8030 6168</code>\n\n"
             "💎 <b>Криптовалюта (USDT TRC-20 / TON / GRAM):</b>\n"
             f"Реквизиты кошелька выдаются у менеджера @{SUPPORT_USERNAME}\n\n"
             "⭐ <b>Telegram Stars:</b>\n"
@@ -2457,12 +2454,12 @@ async def show_deposit_methods(callback: CallbackQuery):
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="🇷🇺 Сбербанк", callback_data="dep_sber"),
+                    InlineKeyboardButton(text="🇷🇺 СберБанк", callback_data="dep_sber"),
                     InlineKeyboardButton(text="🇺🇦 ПриватБанк", callback_data="dep_privat"),
                 ],
                 [
-                    InlineKeyboardButton(text="🇰🇿 Карта КЗ", callback_data="dep_kzt"),
-                    InlineKeyboardButton(text="🇧🇾 Беларусбанк", callback_data="dep_byn"),
+                    InlineKeyboardButton(text="🇰🇿 Каспи Голд", callback_data="dep_kzt"),
+                    InlineKeyboardButton(text="🇧🇾 БеларусБанк", callback_data="dep_byn"),
                 ],
                 [
                     InlineKeyboardButton(text="💎 Криптокошелек", callback_data="dep_crypto"),
@@ -2506,7 +2503,7 @@ async def show_dep_sber(callback: CallbackQuery):
         )
     else:
         text = (
-            "🇷🇺 <b>Пополнение через Сбербанк (RUB)</b>\n\n"
+            "🇷🇺 <b>Пополнение через СберБанк (RUB)</b>\n\n"
             "Номер карты (нажмите, чтобы скопировать):\n"
             "<code>2202 2088 1003 8217</code>\n\n"
             "Банк: <b>СберБанк</b>\n"
@@ -2574,9 +2571,10 @@ async def show_dep_kzt(callback: CallbackQuery):
     lang = await db.get_user_language(callback.from_user.id)
     if lang == "en":
         text = (
-            "🇰🇿 <b>Top up via Kazakhstan Card (KZT)</b>\n\n"
+            "🇰🇿 <b>Top up via Kaspi Gold (KZT)</b>\n\n"
             "Card number (tap to copy):\n"
             "<code>4400 4301 1964 9553</code>\n\n"
+            "Bank: <b>Kaspi Gold</b>\n"
             "Currency: <b>Tenge (KZT)</b>\n\n"
             f"After payment, please send the transaction receipt to manager @{SUPPORT_USERNAME} for crediting."
         )
@@ -2589,9 +2587,10 @@ async def show_dep_kzt(callback: CallbackQuery):
         )
     else:
         text = (
-            "🇰🇿 <b>Пополнение картой Казахстана (KZT)</b>\n\n"
+            "🇰🇿 <b>Пополнение через Каспи Голд (KZT)</b>\n\n"
             "Номер карты (нажмите, чтобы скопировать):\n"
             "<code>4400 4301 1964 9553</code>\n\n"
+            "Банк: <b>Каспи Голд</b>\n"
             "Валюта: <b>Тенге (KZT)</b>\n\n"
             f"После перевода отправьте квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления."
         )
@@ -2614,26 +2613,32 @@ async def show_dep_byn(callback: CallbackQuery):
     lang = await db.get_user_language(callback.from_user.id)
     if lang == "en":
         text = (
-            "🇧🇾 <b>Top up via Belarusbank (BYN)</b>\n\n"
-            f"To get the latest Belarusbank requisites, please contact manager @{SUPPORT_USERNAME}.\n\n"
-            "Funds will be credited to your balance immediately after payment confirmation."
+            "🇧🇾 <b>Top up via BelarusBank (BYN)</b>\n\n"
+            "Card number (tap to copy):\n"
+            "<code>4255 1905 8030 6168</code>\n\n"
+            "Bank: <b>BelarusBank</b>\n"
+            "Currency: <b>Belarusian Rubles (BYN)</b>\n\n"
+            f"After payment, please send the transaction receipt to manager @{SUPPORT_USERNAME} for crediting."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Contact Manager @HypedDealsSupport ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💬 Send Receipt to Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
                 [InlineKeyboardButton(text="💳 All Requisites", callback_data="deposit_balance")],
                 [InlineKeyboardButton(text="👤 Profile", callback_data="profile")],
             ]
         )
     else:
         text = (
-            "🇧🇾 <b>Пополнение через Беларусбанк (BYN)</b>\n\n"
-            f"Актуальные реквизиты карты Беларусбанка выдаются напрямую через менеджера @{SUPPORT_USERNAME}.\n\n"
-            "После подтверждения перевода средства будут моментально зачислены на ваш баланс."
+            "🇧🇾 <b>Пополнение через БеларусБанк (BYN)</b>\n\n"
+            "Номер карты (нажмите, чтобы скопировать):\n"
+            "<code>4255 1905 8030 6168</code>\n\n"
+            "Банк: <b>БеларусБанк</b>\n"
+            "Валюта: <b>Белорусские рубли (BYN)</b>\n\n"
+            f"После перевода отправьте квитанцию нашему менеджеру @{SUPPORT_USERNAME} для моментального зачисления."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Написать менеджеру @HypedDealsSupport ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
+                [InlineKeyboardButton(text="💬 Отправить чек менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
                 [InlineKeyboardButton(text="💳 Все реквизиты", callback_data="deposit_balance")],
                 [InlineKeyboardButton(text="👤 В профиль", callback_data="profile")],
             ]

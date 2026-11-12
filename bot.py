@@ -344,10 +344,12 @@ def get_buyer_deal_keyboard(deal_id: str, support_user: str, is_creator: bool = 
 def get_deal_completed_keyboard(deal_id: str, lang: str = "ru") -> InlineKeyboardMarkup:
     """Клавиатура после завершения сделки: оставить отзыв или в меню."""
     review_text = "💬 Leave Review" if lang == "en" else "💬 Оставить отзыв"
+    skip_text = "❌ Skip Review" if lang == "en" else "❌ Пропустить отзыв"
     menu_text = "◀️ Main Menu" if lang == "en" else "◀️ Главное меню"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=review_text, callback_data=f"leave_review_{deal_id}")],
+            [InlineKeyboardButton(text=skip_text, callback_data=f"skip_review_{deal_id}")],
             [InlineKeyboardButton(text=menu_text, callback_data="back_to_menu")],
         ]
     )
@@ -1417,7 +1419,26 @@ async def finish_deal_handler(callback: CallbackQuery):
     await callback.answer()
 
 
-# ------------------ Оставить отзыв о сделке ------------------
+# ------------------ Оставить или пропустить отзыв о сделке ------------------
+
+@dp.callback_query(F.data.startswith("skip_review_"))
+async def skip_review_handler(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    lang = await db.get_user_language(callback.from_user.id)
+    alert = "Review skipped." if lang == "en" else "Отзыв пропущен."
+    await callback.answer(alert)
+
+    text = get_welcome_text(SUPPORT_USERNAME, lang=lang)
+    kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
 
 @dp.callback_query(F.data.startswith("leave_review_"))
 async def leave_review_handler(callback: CallbackQuery, state: FSMContext):

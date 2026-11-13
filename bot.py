@@ -972,9 +972,9 @@ async def process_nft_link(message: Message, state: FSMContext):
             f"💰 <b>Deal amount:</b> {amount:.2f} {currency}\n"
             f"📊 <b>Service fee (3%):</b> {fee:.2f} {currency}\n"
             f"💵 <b>To be received by seller:</b> {payout:.2f} {currency}\n"
-            f"📦 <b>Description:</b>\n{item_link}\n\n"
+            f"📦 <b>Description:</b>\n<code>{item_link}</code>\n\n"
             f"🔗 <b>Invite link for {counterpart_label}:</b>\n"
-            f"{direct_link}\n\n"
+            f"<code>{direct_link}</code>\n\n"
             f"Or invite via inline: type <code>@{BOT_USERNAME} #{deal_id}</code> in any chat\n\n"
             f"{action_hint}"
         )
@@ -993,9 +993,9 @@ async def process_nft_link(message: Message, state: FSMContext):
             f"💰 <b>Сумма сделки:</b> {amount:.2f} {currency}\n"
             f"📊 <b>Комиссия сервиса (3%):</b> {fee:.2f} {currency}\n"
             f"💵 <b>К получению продавцом:</b> {payout:.2f} {currency}\n"
-            f"📦 <b>Описание:</b>\n{item_link}\n\n"
+            f"📦 <b>Описание:</b>\n<code>{item_link}</code>\n\n"
             f"🔗 <b>Ссылка для {counterpart_label}:</b>\n"
-            f"{direct_link}\n\n"
+            f"<code>{direct_link}</code>\n\n"
             f"Или пригласите через инлайн: введите <code>@{BOT_USERNAME} #{deal_id}</code> в любом чате\n\n"
             f"{action_hint}"
         )
@@ -1547,178 +1547,90 @@ async def inline_query_handler(inline_query: InlineQuery):
     clean_query = raw_query.lstrip("#").replace("deal_", "").strip()
 
     results = []
+    deals_to_show = []
 
     if clean_query:
         deal = await db.get_deal(clean_query)
         if deal and deal["status"] in ["created", "accepted"]:
-            deal_id = deal["deal_id"]
-            join_url = f"https://t.me/{BOT_USERNAME}?start=deal_{deal_id}"
-            creator_role = deal.get("creator_role", "seller")
-            d_lang = deal.get("language", "ru")
-            curr = get_curr_info(deal.get("currency", "RUB"))
-            img_url = deal.get("image_url") or DEFAULT_NFT_GIF
+            deals_to_show.append(deal)
 
-            if d_lang == "en":
-                role_label = "Seller" if creator_role == "seller" else "Buyer"
-                invite_text = (
-                    f"🤝 <b>Invitation to deal #{deal_id}</b>\n\n"
-                    f"🛒 <b>Creator role:</b> {role_label}\n"
-                    f"{curr['flag']} <b>Amount:</b> {deal['amount']:.2f} {deal['currency']}\n"
-                    f"📊 <b>Service fee:</b> 3%\n"
-                    f"📦 <b>Item / NFT:</b> {deal['item_link']}\n\n"
-                    f"<i>Click the button below to open the deal:</i>"
-                )
-                btn_text = "👉 Open Deal"
-                card_title = f"🤝 Deal #{deal_id} — {deal['amount']:.2f} {deal['currency']}"
-                card_desc = f"Item: {deal['item_link'][:40]} | Click to send"
-            else:
-                role_label = "Продавец" if creator_role == "seller" else "Покупатель"
-                invite_text = (
-                    f"🤝 <b>Приглашение в сделку #{deal_id}</b>\n\n"
-                    f"🛒 <b>Роль создателя:</b> {role_label}\n"
-                    f"{curr['flag']} <b>Сумма:</b> {deal['amount']:.2f} {deal['currency']}\n"
-                    f"📊 <b>Комиссия сервиса:</b> 3%\n"
-                    f"📦 <b>Товар / NFT:</b> {deal['item_link']}\n\n"
-                    f"<i>Нажмите кнопку ниже, чтобы перейти к сделке:</i>"
-                )
-                btn_text = "👉 Открыть сделку"
-                card_title = f"🤝 Сделка #{deal_id} — {deal['amount']:.2f} {deal['currency']}"
-                card_desc = f"Товар: {deal['item_link'][:40]} | Нажмите для отправки"
-
-            invite_keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=btn_text, url=join_url)]]
-            )
-
-            is_gif = str(img_url).lower().endswith(".gif")
-            if is_gif:
-                card_media = InlineQueryResultGif(
-                    id=f"gif_{deal_id}",
-                    gif_url=img_url,
-                    thumbnail_url=img_url,
-                    title=card_title,
-                    caption=invite_text,
-                    parse_mode="HTML",
-                    reply_markup=invite_keyboard,
-                )
-            else:
-                card_media = InlineQueryResultPhoto(
-                    id=f"photo_{deal_id}",
-                    photo_url=img_url,
-                    thumbnail_url=img_url,
-                    title=card_title,
-                    description=card_desc,
-                    caption=invite_text,
-                    parse_mode="HTML",
-                    reply_markup=invite_keyboard,
-                )
-            results.append(card_media)
-
-            card_article = InlineQueryResultArticle(
-                id=f"art_{deal_id}",
-                title=card_title,
-                description=card_desc,
-                thumbnail_url=img_url,
-                thumbnail_width=100,
-                thumbnail_height=100,
-                input_message_content=InputTextMessageContent(
-                    message_text=f'<a href="{img_url}">&#8203;</a>' + invite_text,
-                    parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(
-                        is_disabled=False,
-                        url=img_url,
-                        prefer_large_media=True,
-                        show_above_text=True,
-                    ),
-                ),
-                reply_markup=invite_keyboard,
-            )
-            results.append(card_article)
-
-    if not results:
+    if not deals_to_show:
         user_deals = await db.get_user_active_created_deals(inline_query.from_user.id)
-        for d in user_deals:
-            deal_id = d["deal_id"]
-            join_url = f"https://t.me/{BOT_USERNAME}?start=deal_{deal_id}"
-            creator_role = d.get("creator_role", "seller")
-            d_lang = d.get("language", "ru")
-            curr = get_curr_info(d.get("currency", "RUB"))
-            img_url = d.get("image_url") or DEFAULT_NFT_GIF
+        deals_to_show.extend(user_deals)
 
-            if d_lang == "en":
-                role_label = "Seller" if creator_role == "seller" else "Buyer"
-                invite_text = (
-                    f"🤝 <b>Invitation to deal #{deal_id}</b>\n\n"
-                    f"🛒 <b>Creator role:</b> {role_label}\n"
-                    f"{curr['flag']} <b>Amount:</b> {d['amount']:.2f} {d['currency']}\n"
-                    f"📊 <b>Service fee:</b> 3%\n"
-                    f"📦 <b>Item / NFT:</b> {d['item_link']}\n\n"
-                    f"<i>Click the button below to open the deal:</i>"
-                )
-                btn_text = "👉 Open Deal"
-                card_title = f"🤝 Your deal #{deal_id} ({d['amount']:.2f} {d['currency']})"
-                card_desc = "Send invitation to deal partner"
-            else:
-                role_label = "Продавец" if creator_role == "seller" else "Покупатель"
-                invite_text = (
-                    f"🤝 <b>Приглашение в сделку #{deal_id}</b>\n\n"
-                    f"🛒 <b>Роль создателя:</b> {role_label}\n"
-                    f"{curr['flag']} <b>Сумма:</b> {d['amount']:.2f} {d['currency']}\n"
-                    f"📊 <b>Комиссия сервиса:</b> 3%\n"
-                    f"📦 <b>Товар / NFT:</b> {d['item_link']}\n\n"
-                    f"<i>Нажмите кнопку ниже, чтобы перейти к сделке:</i>"
-                )
-                btn_text = "👉 Открыть сделку"
-                card_title = f"🤝 Ваша сделка #{deal_id} ({d['amount']:.2f} {d['currency']})"
-                card_desc = "Отправить приглашение партнеру по сделке"
+    for deal in deals_to_show:
+        deal_id = deal["deal_id"]
+        join_url = f"https://t.me/{BOT_USERNAME}?start=deal_{deal_id}"
+        creator_role = deal.get("creator_role", "seller")
+        d_lang = deal.get("language", "ru")
+        curr = get_curr_info(deal.get("currency", "RUB"))
+        raw_link = deal.get("item_link", "").strip()
+        nft_url = ("https://" + raw_link) if not raw_link.startswith("http") else raw_link
+        img_thumb = deal.get("image_url") or DEFAULT_NFT_GIF
 
-            invite_keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=btn_text, url=join_url)]]
+        # Извлекаем красивое название подарка из ссылки
+        slug = nft_url.rstrip("/").split("/")[-1]
+        slug_match = re.search(r'([A-Za-z0-9\-_]+?)-(\d+)$', slug)
+        if slug_match:
+            nft_title = f"{slug_match.group(1).replace('-', ' ').replace('_', ' ').title()} #{slug_match.group(2)}"
+        else:
+            nft_title = slug if slug else "Telegram Gift"
+
+        if d_lang == "en":
+            role_label = "Seller" if creator_role == "seller" else "Buyer"
+            invite_text = (
+                f"🤝 <b>Invitation to deal #{deal_id}</b>\n\n"
+                f"🛒 <b>Creator role:</b> {role_label}\n"
+                f"{curr['flag']} <b>Amount:</b> {deal['amount']:.2f} {deal['currency']}\n"
+                f"📊 <b>Service fee:</b> 3%\n"
+                f"📦 <b>Gift / NFT:</b> <a href=\"{nft_url}\"><b>{nft_title}</b></a>\n\n"
+                f"<i>Click the button below to open the deal:</i>"
             )
-
-            is_gif = str(img_url).lower().endswith(".gif")
-            if is_gif:
-                card_media = InlineQueryResultGif(
-                    id=f"gif_act_{deal_id}",
-                    gif_url=img_url,
-                    thumbnail_url=img_url,
-                    title=card_title,
-                    caption=invite_text,
-                    parse_mode="HTML",
-                    reply_markup=invite_keyboard,
-                )
-            else:
-                card_media = InlineQueryResultPhoto(
-                    id=f"photo_act_{deal_id}",
-                    photo_url=img_url,
-                    thumbnail_url=img_url,
-                    title=card_title,
-                    description=card_desc,
-                    caption=invite_text,
-                    parse_mode="HTML",
-                    reply_markup=invite_keyboard,
-                )
-            results.append(card_media)
-
-            card_article = InlineQueryResultArticle(
-                id=f"active_{deal_id}",
-                title=card_title,
-                description=card_desc,
-                thumbnail_url=img_url,
-                thumbnail_width=100,
-                thumbnail_height=100,
-                input_message_content=InputTextMessageContent(
-                    message_text=f'<a href="{img_url}">&#8203;</a>' + invite_text,
-                    parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(
-                        is_disabled=False,
-                        url=img_url,
-                        prefer_large_media=True,
-                        show_above_text=True,
-                    ),
-                ),
-                reply_markup=invite_keyboard,
+            btn_text = "👉 Open Deal"
+            card_title = f"🎁 Deal #{deal_id} — {nft_title}"
+            card_desc = f"{deal['amount']:.2f} {deal['currency']} | Tap to send invitation"
+        else:
+            role_label = "Продавец" if creator_role == "seller" else "Покупатель"
+            invite_text = (
+                f"🤝 <b>Приглашение в сделку #{deal_id}</b>\n\n"
+                f"🛒 <b>Роль создателя:</b> {role_label}\n"
+                f"{curr['flag']} <b>Сумма:</b> {deal['amount']:.2f} {deal['currency']}\n"
+                f"📊 <b>Комиссия сервиса:</b> 3%\n"
+                f"📦 <b>Подарок / NFT:</b> <a href=\"{nft_url}\"><b>{nft_title}</b></a>\n\n"
+                f"<i>Нажмите кнопку ниже, чтобы перейти к сделке:</i>"
             )
-            results.append(card_article)
+            btn_text = "👉 Открыть сделку"
+            card_title = f"🎁 Сделка #{deal_id} — {nft_title}"
+            card_desc = f"{deal['amount']:.2f} {deal['currency']} | Нажмите для отправки"
+
+        invite_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=btn_text, url=join_url)]]
+        )
+
+        # Обход для инлайна: Article + LinkPreviewOptions с ссылкой на nft_url
+        # Позволяет Telegram нативно подгрузить большую GIF-анимацию 3D подарка без ошибок отправки
+        link_opts = LinkPreviewOptions(
+            is_disabled=False,
+            url=nft_url,
+            prefer_large_media=True,
+            show_above_text=True
+        )
+
+        article = InlineQueryResultArticle(
+            id=f"deal_{deal_id}",
+            title=card_title,
+            description=card_desc,
+            thumbnail_url=img_thumb,
+            thumbnail_width=100,
+            thumbnail_height=100,
+            input_message_content=InputTextMessageContent(
+                message_text=invite_text,
+                parse_mode="HTML",
+                link_preview_options=link_opts
+            ),
+            reply_markup=invite_keyboard
+        )
+        results.append(article)
 
     if not results:
         hint_card = InlineQueryResultArticle(

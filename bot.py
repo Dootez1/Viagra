@@ -448,16 +448,101 @@ def strip_custom_emojis(html_text: str) -> str:
 async def init_custom_emoji_packs(bot: Bot):
     """
     Автоматически сканирует паки, указанные пользователем:
-    - Topic Icons (замок, лампочка)
+    - TopicIcons (замок, лампочка, молния, щит)
     - GeometryDashPusab (цифры 1, 2, 3, 4)
     - NewsEmoji (глобус)
-    - TgAndroidIcons (профиль, календарь, график)
+    - TgAndroidIcons (профиль, календарь, график, коробка)
     - MickeyMouseEmoji (указатель вниз)
     """
     data = load_custom_emojis()
     updated = False
 
-    # 1. Topic Icons (официальный набор Telegram)
+    # 1. Сканирование паков по названиям
+    packs = [
+        ("TopicIcons", {
+            "💼": "lock",
+            "🔒": "lock",
+            "👝": "lock",
+            "💡": "bulb",
+            "⚡": "lightning",
+            "⚡️": "lightning",
+            "🛡": "shield",
+            "🛡️": "shield"
+        }),
+        ("NewsEmoji", {
+            "🌐": "globe"
+        }),
+        ("TgAndroidIcons", {
+            "👤": "user",
+            "📅": "calendar",
+            "📈": "chart",
+            "📊": "chart",
+            "📦": "box",
+            "🛡": "shield"
+        }),
+        ("MickeyMouseEmoji", {
+            "👇": "hand_down"
+        })
+    ]
+
+    for pack_name, mapping in packs:
+        try:
+            s_set = await bot.get_sticker_set(name=pack_name)
+            logger.info(f"Пак '{pack_name}' успешно получен, стикеров: {len(s_set.stickers)}")
+            for s in s_set.stickers:
+                eid = s.custom_emoji_id
+                char = getattr(s, "emoji", "")
+                if char in mapping:
+                    target = mapping[char]
+                    if target not in data:
+                        data[target] = eid
+                        updated = True
+        except Exception as e:
+            logger.warning(f"Ошибка загрузки пака '{pack_name}': {e}")
+
+    # 2. GeometryDashPusab для цифр 1, 2, 3, 4
+    try:
+        gd_set = await bot.get_sticker_set(name="GeometryDashPusab")
+        logger.info(f"Пак GeometryDashPusab получен, стикеров: {len(gd_set.stickers)}")
+        # Ищем стикеры с цифрами или символом abc/🔤
+        abc_stickers = []
+        for idx, s in enumerate(gd_set.stickers):
+            char = getattr(s, "emoji", "")
+            if char in ("1", "1️⃣"):
+                data["num1"] = s.custom_emoji_id
+                updated = True
+            elif char in ("2", "2️⃣"):
+                data["num2"] = s.custom_emoji_id
+                updated = True
+            elif char in ("3", "3️⃣"):
+                data["num3"] = s.custom_emoji_id
+                updated = True
+            elif char in ("4", "4️⃣"):
+                data["num4"] = s.custom_emoji_id
+                updated = True
+            elif char in ("🔤", "abc", ""):
+                abc_stickers.append((idx, s.custom_emoji_id))
+
+        # Если цифры были привязаны к 🔤
+        if ("num1" not in data or "num2" not in data) and len(abc_stickers) >= 4:
+            # Находим блок цифр
+            for i, (idx, eid) in enumerate(abc_stickers):
+                if i == 0 and "num1" not in data:
+                    data["num1"] = eid
+                    updated = True
+                elif i == 1 and "num2" not in data:
+                    data["num2"] = eid
+                    updated = True
+                elif i == 2 and "num3" not in data:
+                    data["num3"] = eid
+                    updated = True
+                elif i == 3 and "num4" not in data:
+                    data["num4"] = eid
+                    updated = True
+    except Exception as e:
+        logger.warning(f"Ошибка загрузки GeometryDashPusab: {e}")
+
+    # 3. Topic icons fallback (официальный Telegram)
     try:
         topic_stickers = await bot.get_forum_topic_icon_stickers()
         for s in topic_stickers:
@@ -469,46 +554,18 @@ async def init_custom_emoji_packs(bot: Bot):
             elif char in ("💡", "🔦") and "bulb" not in data:
                 data["bulb"] = eid
                 updated = True
+            elif char in ("⚡", "⚡️") and "lightning" not in data:
+                data["lightning"] = eid
+                updated = True
+            elif char in ("🛡", "🛡️") and "shield" not in data:
+                data["shield"] = eid
+                updated = True
     except Exception as e:
         logger.debug(f"Topic icons fetch error: {e}")
 
-    # 2. Наборы GeometryDashPusab, NewsEmoji, TgAndroidIcons, MickeyMouseEmoji
-    packs = [
-        ("GeometryDashPusab", {
-            "1": "num1", "2": "num2", "3": "num3", "4": "num4",
-            "1️⃣": "num1", "2️⃣": "num2", "3️⃣": "num3", "4️⃣": "num4"
-        }),
-        ("NewsEmoji", {
-            "🌐": "globe"
-        }),
-        ("TgAndroidIcons", {
-            "👤": "user",
-            "📅": "calendar",
-            "📈": "chart",
-            "📊": "chart"
-        }),
-        ("MickeyMouseEmoji", {
-            "👇": "hand_down"
-        })
-    ]
-
-    for pack_name, mapping in packs:
-        try:
-            s_set = await bot.get_sticker_set(name=pack_name)
-            for s in s_set.stickers:
-                eid = s.custom_emoji_id
-                char = getattr(s, "emoji", "")
-                if char in mapping:
-                    target = mapping[char]
-                    if target not in data:
-                        data[target] = eid
-                        updated = True
-        except Exception as e:
-            logger.debug(f"Pack {pack_name} fetch error: {e}")
-
     if updated:
         save_custom_emojis(data)
-        logger.info(f"Custom emojis successfully loaded: {data}")
+        logger.info(f"Кастомные эмодзи сохранены: {list(data.keys())}")
 
 def get_emoji(name: str, fallback: str) -> str:
     emojis = load_custom_emojis()

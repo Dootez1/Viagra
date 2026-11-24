@@ -34,9 +34,8 @@ import re
 # Загрузка переменных окружения
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "HypedDealsSupport").strip().lstrip("@")
-REVIEWS_CHANNEL = os.getenv("REVIEWS_CHANNEL", "HypedDealsReviews").strip().lstrip("@")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "HypedDeaIsBot").strip().lstrip("@")
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "FunPayDealsSupport").strip().lstrip("@")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "FunPayDealsBot").strip().lstrip("@")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo", "photo_2026-11-11_21-48-59.jpg")
 
@@ -45,7 +44,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("HypedDealsBot")
+logger = logging.getLogger("FunPayDealsBot")
 
 # Инициализация диспетчера
 dp = Dispatcher(storage=MemoryStorage())
@@ -432,7 +431,7 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 def get_welcome_text(support_user: str, lang: str = "ru") -> str:
     if lang == "en":
         return (
-            "💼 <b>Welcome to Hyped Deals</b> 🤝\n\n"
+            "💼 <b>Welcome to FunPayDeals</b> 🤝\n\n"
             "⚡️ <b>Your trusted P2P escrow:</b>\n"
             "1️⃣ Automated deals with NFTs and gifts\n"
             "2️⃣ 🛡 Complete protection for both parties\n"
@@ -441,7 +440,7 @@ def get_welcome_text(support_user: str, lang: str = "ru") -> str:
             "💡 <i>Choose an action below 👇</i>"
         )
     return (
-        "💼 <b>Добро пожаловать в Hyped Deals</b> 🤝\n\n"
+        "💼 <b>Добро пожаловать в FunPayDeals</b> 🤝\n\n"
         "⚡️ <b>Ваш надёжный P2P-гарант:</b>\n"
         "1️⃣ Автоматические сделки с NFT и подарками\n"
         "2️⃣ 🛡 Полная защита обеих сторон\n"
@@ -1479,12 +1478,12 @@ async def process_review_text(message: Message, state: FSMContext):
     if lang == "en":
         thanks_text = (
             "❤️ <b>Thank you for your review!</b>\n\n"
-            f"Your feedback has been saved and will appear in our reviews channel @{REVIEWS_CHANNEL}."
+            "Your feedback has been successfully saved. We appreciate your trust!"
         )
     else:
         thanks_text = (
             "❤️ <b>Спасибо за ваш отзыв!</b>\n\n"
-            f"Ваш отзыв успешно сохранён и будет опубликован в канале отзывов @{REVIEWS_CHANNEL}."
+            "Ваш отзыв успешно сохранён. Спасибо за доверие к нашему сервису!"
         )
     await message.answer(thanks_text, reply_markup=get_back_keyboard(lang), parse_mode="HTML")
 
@@ -1639,7 +1638,7 @@ async def inline_query_handler(inline_query: InlineQuery):
             description="Создайте сделку в боте или введите #ID_сделки",
             input_message_content=InputTextMessageContent(
                 message_text=(
-                    f"💼 <b>Гарант-бот Hyped Deals</b>\n\n"
+                    f"💼 <b>Гарант-бот FunPayDeals</b>\n\n"
                     f"Для создания сделки перейдите в бота: @{BOT_USERNAME}"
                 ),
                 parse_mode="HTML",
@@ -2243,7 +2242,7 @@ async def show_profile(callback: CallbackQuery):
 
     if lang == "en":
         caption = (
-            f"👤 <b>User Profile — Hyped Deals</b>\n\n"
+            f"👤 <b>User Profile — FunPayDeals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Username:</b> {username_str}\n"
             f"📅 <b>Registration date:</b> <b>{reg_date}</b>\n"
@@ -2259,7 +2258,7 @@ async def show_profile(callback: CallbackQuery):
         )
     else:
         caption = (
-            f"👤 <b>Профиль пользователя — Hyped Deals</b>\n\n"
+            f"👤 <b>Профиль пользователя — FunPayDeals</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
             f"👤 <b>Юзернейм:</b> {username_str}\n"
             f"📅 <b>Дата регистрации:</b> <b>{reg_date}</b>\n"
@@ -2687,31 +2686,26 @@ async def show_referrals(callback: CallbackQuery):
 async def show_reviews(callback: CallbackQuery):
     user_id = callback.from_user.id
     lang = await db.get_user_language(user_id)
-    reviews_url = f"https://t.me/{REVIEWS_CHANNEL}"
 
     if lang == "en":
         text = (
             "💬 <b>Reviews:</b>\n\n"
-            f"You can read all verified reviews in our official channel:\n"
-            f"👉 <b>t.me/{REVIEWS_CHANNEL}</b>\n\n"
-            f"You can also leave a review through manager — @{SUPPORT_USERNAME}, or after completing a deal in the bot."
+            f"You can check verified reviews or leave your feedback directly through our manager — @{SUPPORT_USERNAME}, or right after completing a deal in the bot."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Reviews Channel ↗", url=reviews_url)],
+                [InlineKeyboardButton(text="💬 Contact Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
                 [InlineKeyboardButton(text="◀️ Back to menu", callback_data="back_to_menu")],
             ]
         )
     else:
         text = (
             "💬 <b>Отзывы о сервисе:</b>\n\n"
-            f"Ознакомиться со всеми отзывами вы можете в нашем официальном канале:\n"
-            f"👉 <b>t.me/{REVIEWS_CHANNEL}</b>\n\n"
-            f"Также оставить отзыв можно через менеджера — @{SUPPORT_USERNAME}, или же после завершения сделки в боте."
+            f"Ознакомиться с отзывами или оставить свой отзыв вы можете напрямую через нашего менеджера — @{SUPPORT_USERNAME}, а также после завершения сделки в боте."
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Канал с отзывами ↗", url=reviews_url)],
+                [InlineKeyboardButton(text="💬 Написать менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
                 [InlineKeyboardButton(text="◀️ Назад в меню", callback_data="back_to_menu")],
             ]
         )

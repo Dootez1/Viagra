@@ -1,6 +1,6 @@
-# Lotus Dels | P2P Гарант-бот (aiogram 3, SQLite, Telegram Stars)
+# FunPayDeals | P2P Гарант-бот (aiogram 3, SQLite, Telegram Stars)
 
-Полноценный P2P гарант-бот для автоматических сделок с NFT и подарками Telegram, созданный по структуре **Lotus Dels | Гарант бот**.
+Полноценный P2P гарант-бот для автоматических сделок с NFT и подарками Telegram, созданный по структуре **FunPayDeals | Гарант бот**.
 
 ## 🚀 Основные возможности
 
@@ -12,7 +12,7 @@
    - `👥 Рефералы` — реферальная программа 50% с персональной deep-link ссылкой.
    - `💬 Отзывы` — связь с менеджером.
    - `🌐 Язык / Lang` — выбор языка интерфейса.
-   - `🆘 Техподдержка ↗` — прямая ссылка на саппорта `@HypedDealsSupport`.
+   - `🆘 Техподдержка ↗` — прямая ссылка на саппорта `@FunPayDealsSupport`.
 
 2. **Сценарий создания сделки**:
    - **Шаг 1**: Выбор роли («👑 Я продавец» / «🛍 Я покупатель»).
@@ -46,7 +46,7 @@
    ```text
    /setinline
    ```
-3. Выберите вашего бота (например, `@TonnelOfferBot`).
+3. Выберите вашего бота.
 4. Введите плейсхолдер для строки ввода, например:
    ```text
    Введите #ID_сделки...
@@ -64,8 +64,8 @@
 2. Убедитесь, что в файле `.env` указаны необходимые переменные:
    ```env
    BOT_TOKEN=YOUR_BOT_TOKEN_HERE
-   SUPPORT_USERNAME=HypedDealsSupport
-   REVIEWS_CHANNEL=HypedDealsReviews
+   SUPPORT_USERNAME=FunPayDealsSupport
+   BOT_USERNAME=FunPayDealsBot
    ```
 3. Запустите бота:
    ```bash

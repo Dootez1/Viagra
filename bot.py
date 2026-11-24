@@ -418,22 +418,97 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 # ------------------ Тексты и кастомные эмодзи ------------------
 
 CUSTOM_EMOJIS_FILE = os.path.join(os.path.dirname(__file__), "custom_emojis.json")
+CUSTOM_EMOJIS_CACHE = {}
 
 def load_custom_emojis() -> dict:
+    global CUSTOM_EMOJIS_CACHE
+    if CUSTOM_EMOJIS_CACHE:
+        return CUSTOM_EMOJIS_CACHE
     if os.path.exists(CUSTOM_EMOJIS_FILE):
         try:
             with open(CUSTOM_EMOJIS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                CUSTOM_EMOJIS_CACHE = json.load(f)
+                return CUSTOM_EMOJIS_CACHE
         except Exception:
             pass
     return {}
 
 def save_custom_emojis(data: dict):
+    global CUSTOM_EMOJIS_CACHE
+    CUSTOM_EMOJIS_CACHE = data
     try:
         with open(CUSTOM_EMOJIS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Failed to save custom emojis: {e}")
+
+def strip_custom_emojis(html_text: str) -> str:
+    return re.sub(r'</?tg-emoji[^>]*>', '', html_text)
+
+async def init_custom_emoji_packs(bot: Bot):
+    """
+    Автоматически сканирует паки, указанные пользователем:
+    - Topic Icons (замок, лампочка)
+    - GeometryDashPusab (цифры 1, 2, 3, 4)
+    - NewsEmoji (глобус)
+    - TgAndroidIcons (профиль, календарь, график)
+    - MickeyMouseEmoji (указатель вниз)
+    """
+    data = load_custom_emojis()
+    updated = False
+
+    # 1. Topic Icons (официальный набор Telegram)
+    try:
+        topic_stickers = await bot.get_forum_topic_icon_stickers()
+        for s in topic_stickers:
+            eid = s.custom_emoji_id
+            char = getattr(s, "emoji", "")
+            if char in ("💼", "🔒", "👝") and "lock" not in data:
+                data["lock"] = eid
+                updated = True
+            elif char in ("💡", "🔦") and "bulb" not in data:
+                data["bulb"] = eid
+                updated = True
+    except Exception as e:
+        logger.debug(f"Topic icons fetch error: {e}")
+
+    # 2. Наборы GeometryDashPusab, NewsEmoji, TgAndroidIcons, MickeyMouseEmoji
+    packs = [
+        ("GeometryDashPusab", {
+            "1": "num1", "2": "num2", "3": "num3", "4": "num4",
+            "1️⃣": "num1", "2️⃣": "num2", "3️⃣": "num3", "4️⃣": "num4"
+        }),
+        ("NewsEmoji", {
+            "🌐": "globe"
+        }),
+        ("TgAndroidIcons", {
+            "👤": "user",
+            "📅": "calendar",
+            "📈": "chart",
+            "📊": "chart"
+        }),
+        ("MickeyMouseEmoji", {
+            "👇": "hand_down"
+        })
+    ]
+
+    for pack_name, mapping in packs:
+        try:
+            s_set = await bot.get_sticker_set(name=pack_name)
+            for s in s_set.stickers:
+                eid = s.custom_emoji_id
+                char = getattr(s, "emoji", "")
+                if char in mapping:
+                    target = mapping[char]
+                    if target not in data:
+                        data[target] = eid
+                        updated = True
+        except Exception as e:
+            logger.debug(f"Pack {pack_name} fetch error: {e}")
+
+    if updated:
+        save_custom_emojis(data)
+        logger.info(f"Custom emojis successfully loaded: {data}")
 
 def get_emoji(name: str, fallback: str) -> str:
     emojis = load_custom_emojis()
@@ -773,11 +848,16 @@ async def cmd_start(message: Message, state: FSMContext):
 
     # Обычный старт
     user_lang = await db.get_user_language(user_id)
-    await message.answer(
-        get_welcome_text(SUPPORT_USERNAME, lang=user_lang),
-        reply_markup=get_main_menu_keyboard(SUPPORT_USERNAME, lang=user_lang),
-        parse_mode="HTML",
-    )
+    welcome_text = get_welcome_text(SUPPORT_USERNAME, lang=user_lang)
+    menu_kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=user_lang)
+    try:
+        await message.answer(welcome_text, reply_markup=menu_kb, parse_mode="HTML")
+    except Exception as e:
+        err = str(e).lower()
+        if "custom emoji" in err or "entity" in err:
+            await message.answer(strip_custom_emojis(welcome_text), reply_markup=menu_kb, parse_mode="HTML")
+        else:
+            raise
 
 
 # ------------------ Сценарий «Создать сделку» (FSM) ------------------
@@ -3024,6 +3104,12 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     bot_info = await bot.get_me()
     logger.info(f"Бот @{bot_info.username} (ID: {bot_info.id}) успешно авторизован.")
+
+    # Автоматическая загрузка кастомных эмодзи из наборов Topic Icons, GeometryDashPusab, NewsEmoji, etc.
+    try:
+        await init_custom_emoji_packs(bot)
+    except Exception as e:
+        logger.warning(f"Ошибка загрузки наборов эмодзи на старте: {e}")
 
     # Проверка поддержки инлайн-режима
     if not bot_info.supports_inline_queries:

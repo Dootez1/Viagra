@@ -34,7 +34,7 @@ import re
 # Загрузка переменных окружения
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "FunPayDealsSupport").strip().lstrip("@")
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "FunPayDealsSuppor").strip().lstrip("@")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "FunPayDealsBot").strip().lstrip("@")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo", "photo_2026-11-11_21-48-59.jpg")

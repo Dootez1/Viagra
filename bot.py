@@ -415,28 +415,65 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     )
 
 
-# ------------------ Тексты ------------------
+# ------------------ Тексты и кастомные эмодзи ------------------
+
+CUSTOM_EMOJIS_FILE = os.path.join(os.path.dirname(__file__), "custom_emojis.json")
+
+def load_custom_emojis() -> dict:
+    if os.path.exists(CUSTOM_EMOJIS_FILE):
+        try:
+            with open(CUSTOM_EMOJIS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_custom_emojis(data: dict):
+    try:
+        with open(CUSTOM_EMOJIS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save custom emojis: {e}")
+
+def get_emoji(name: str, fallback: str) -> str:
+    emojis = load_custom_emojis()
+    eid = emojis.get(name)
+    if eid:
+        return f'<tg-emoji emoji-id="{eid}">{fallback}</tg-emoji>'
+    return fallback
 
 def get_welcome_text(support_user: str, lang: str = "ru") -> str:
     mgr_str = f" @{support_user}" if support_user else ""
+    e_lock = get_emoji("lock", "💼")
+    e_light = get_emoji("lightning", "⚡️")
+    e_1 = get_emoji("num1", "𝟭")
+    e_2 = get_emoji("num2", "𝟮")
+    e_shield = get_emoji("shield", "🛡")
+    e_3 = get_emoji("num3", "𝟯")
+    e_globe = get_emoji("globe", "🌐")
+    e_4 = get_emoji("num4", "𝟰")
+    e_box = get_emoji("box", "📦")
+    e_bulb = get_emoji("bulb", "💡")
+    e_hand = get_emoji("hand_down", "👇")
+
     if lang == "en":
         return (
-            "💼 <b>Welcome to FunPayDeals</b>\n\n"
-            "⚡️ <b>Your trusted P2P escrow:</b>\n"
-            "1️⃣ <b>Automated deals with NFTs and gifts</b>\n"
-            "2️⃣ 🛡 <b>Complete protection for both parties</b>\n"
-            "3️⃣ 🌐 <b>Referral program — 50% of fee</b>\n"
-            f"4️⃣ 📦 <b>Goods transfer via manager:</b>{mgr_str}\n\n"
-            "💡 <i>Choose an action below</i> 👇"
+            f"{e_lock} <b>Welcome to FunPayDeals</b>\n\n"
+            f"{e_light} <b>Your trusted P2P escrow:</b>\n"
+            f"{e_1} <b>Automated deals with NFTs and gifts</b>\n"
+            f"{e_2} {e_shield} <b>Complete protection for both parties</b>\n"
+            f"{e_3} {e_globe} <b>Referral program — 50% of fee</b>\n"
+            f"{e_4} {e_box} <b>Goods transfer via manager:</b>{mgr_str}\n\n"
+            f"{e_bulb} <i>Choose an action below</i> {e_hand}"
         )
     return (
-        "💼 <b>Добро пожаловать в FunPayDeals</b>\n\n"
-        "⚡️ <b>Ваш надёжный P2P-гарант:</b>\n"
-        "1️⃣ <b>Автоматические сделки с NFT и подарками</b>\n"
-        "2️⃣ 🛡 <b>Полная защита обеих сторон</b>\n"
-        "3️⃣ 🌐 <b>Реферальная программа — 50% от комиссии</b>\n"
-        f"4️⃣ 📦 <b>Передача товаров через менеджера:</b>{mgr_str}\n\n"
-        "💡 <i>Выберите действие ниже</i> 👇"
+        f"{e_lock} <b>Добро пожаловать в FunPayDeals</b>\n\n"
+        f"{e_light} <b>Ваш надёжный P2P-гарант:</b>\n"
+        f"{e_1} <b>Автоматические сделки с NFT и подарками</b>\n"
+        f"{e_2} {e_shield} <b>Полная защита обеих сторон</b>\n"
+        f"{e_3} {e_globe} <b>Реферальная программа — 50% от комиссии</b>\n"
+        f"{e_4} {e_box} <b>Передача товаров через менеджера:</b>{mgr_str}\n\n"
+        f"{e_bulb} <i>Выберите действие ниже</i> {e_hand}"
     )
 
 
@@ -2149,14 +2186,21 @@ async def show_profile(callback: CallbackQuery):
 
     username_str = f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь")
 
+    e_prof = get_emoji("profile_badge", "👤")
+    e_id = get_emoji("id_badge", "🆔")
+    e_user = get_emoji("user", "👤")
+    e_cal = get_emoji("calendar", "📅")
+    e_chart = get_emoji("chart", "📈")
+    e_refs = get_emoji("referrals", "👥")
+
     if lang == "en":
         caption = (
-            f"👤 <b>User Profile — FunPayDeals</b>\n\n"
-            f"🆔 ID: <code>{user_id}</code>\n"
-            f"👤 Username: {username_str}\n"
-            f"📅 Registration date: {reg_date}\n"
-            f"📈 Completed deals: {completed}\n"
-            f"👥 Referrals: {ref_count} users invited"
+            f"{e_prof} <b>User Profile — FunPayDeals</b>\n\n"
+            f"{e_id} ID: <code>{user_id}</code>\n"
+            f"{e_user} Username: {username_str}\n"
+            f"{e_cal} Registration date: {reg_date}\n"
+            f"{e_chart} Completed deals: {completed}\n"
+            f"{e_refs} Referrals: {ref_count} users invited"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -2167,12 +2211,12 @@ async def show_profile(callback: CallbackQuery):
         )
     else:
         caption = (
-            f"👤 <b>Профиль пользователя — FunPayDeals</b>\n\n"
-            f"🆔 ID: <code>{user_id}</code>\n"
-            f"👤 Юзернейм: {username_str}\n"
-            f"📅 Дата регистрации: {reg_date}\n"
-            f"📈 Завершённых сделок: {completed}\n"
-            f"👥 Рефералы: {ref_count} чел. приглашено"
+            f"{e_prof} <b>Профиль пользователя — FunPayDeals</b>\n\n"
+            f"{e_id} ID: <code>{user_id}</code>\n"
+            f"{e_user} Юзернейм: {username_str}\n"
+            f"{e_cal} Дата регистрации: {reg_date}\n"
+            f"{e_chart} Завершённых сделок: {completed}\n"
+            f"{e_refs} Рефералы: {ref_count} чел. приглашено"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -2878,6 +2922,91 @@ async def worker_deals_save_count(message: Message, state: FSMContext):
         f"📈 Всего завершённых сделок: <b>{total}</b>\n\n"
         f"<i>Записи сделок добавлены в раздел «📋 Мои сделки»</i>",
         reply_markup=get_back_keyboard(),
+        parse_mode="HTML"
+    )
+
+
+# ------------------ Автоматический перехват кастомных эмодзи ------------------
+
+@dp.message(lambda msg: msg.entities and any(e.type == "custom_emoji" for e in msg.entities))
+async def capture_custom_emojis_handler(message: Message):
+    """
+    При отправке или пересылке боту сообщения с кастомными эмодзи,
+    бот автоматически сохраняет их ID для использования в приветствии и профиле.
+    """
+    custom_entities = [e for e in message.entities if e.type == "custom_emoji"]
+    if not custom_entities:
+        return
+
+    data = load_custom_emojis()
+    text = message.text or message.caption or ""
+    mapped = []
+
+    for e in custom_entities:
+        eid = e.custom_emoji_id
+        char = text[e.offset : e.offset + e.length]
+
+        if "1" in char or "𝟭" in char or "➊" in char:
+            data["num1"] = eid
+            mapped.append(f"Цифра 1 (ID: {eid})")
+        elif "2" in char or "𝟮" in char or "➋" in char:
+            data["num2"] = eid
+            mapped.append(f"Цифра 2 (ID: {eid})")
+        elif "3" in char or "𝟯" in char or "➌" in char:
+            data["num3"] = eid
+            mapped.append(f"Цифра 3 (ID: {eid})")
+        elif "4" in char or "𝟰" in char or "➍" in char:
+            data["num4"] = eid
+            mapped.append(f"Цифра 4 (ID: {eid})")
+        elif "🛡" in char or "щит" in char.lower():
+            data["shield"] = eid
+            mapped.append(f"Щит (ID: {eid})")
+        elif "🌐" in char or "глобус" in char.lower():
+            data["globe"] = eid
+            mapped.append(f"Глобус (ID: {eid})")
+        elif "📦" in char or "коробка" in char.lower():
+            data["box"] = eid
+            mapped.append(f"Коробка (ID: {eid})")
+        elif "💼" in char or "🔒" in char:
+            data["lock"] = eid
+            mapped.append(f"Замок/портфель (ID: {eid})")
+        elif "⚡" in char:
+            data["lightning"] = eid
+            mapped.append(f"Молния (ID: {eid})")
+        elif "💡" in char:
+            data["bulb"] = eid
+            mapped.append(f"Лампочка (ID: {eid})")
+        elif "👇" in char:
+            data["hand_down"] = eid
+            mapped.append(f"Указатель вниз (ID: {eid})")
+        elif "🆔" in char or "id" in char.lower():
+            data["id_badge"] = eid
+            mapped.append(f"Бейдж ID (ID: {eid})")
+        elif "📅" in char:
+            data["calendar"] = eid
+            mapped.append(f"Календарь (ID: {eid})")
+        elif "📈" in char or "📊" in char:
+            data["chart"] = eid
+            mapped.append(f"График (ID: {eid})")
+        elif "👥" in char:
+            data["referrals"] = eid
+            mapped.append(f"Рефералы (ID: {eid})")
+        elif "👤" in char:
+            if "profile_badge" not in data:
+                data["profile_badge"] = eid
+                mapped.append(f"Профиль бейдж (ID: {eid})")
+            else:
+                data["user"] = eid
+                mapped.append(f"Пользователь (ID: {eid})")
+        else:
+            mapped.append(f"Эмодзи {char} (ID: {eid})")
+
+    save_custom_emojis(data)
+    report = "\n".join(f"• {m}" for m in mapped[:15])
+    await message.reply(
+        f"✅ <b>Кастомные эмодзи успешно перехвачены и активированы!</b>\n\n"
+        f"<b>Привязаны иконки:</b>\n{report}\n\n"
+        f"<i>Теперь бот использует именно эти кастомные 3D-иконки в меню и профиле.</i>",
         parse_mode="HTML"
     )
 

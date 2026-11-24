@@ -418,24 +418,25 @@ def get_requisites_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 # ------------------ Тексты ------------------
 
 def get_welcome_text(support_user: str, lang: str = "ru") -> str:
+    mgr_str = f" @{support_user}" if support_user else ""
     if lang == "en":
         return (
-            "💼 <b>Welcome to FunPayDeals</b> 🤝\n\n"
+            "💼 <b>Welcome to FunPayDeals</b>\n\n"
             "⚡️ <b>Your trusted P2P escrow:</b>\n"
-            "1️⃣ Automated deals with NFTs and gifts\n"
-            "2️⃣ 🛡 Complete protection for both parties\n"
-            "3️⃣ 🌐 Referral program — 50% of service fee\n"
-            f"4️⃣ 📦 Goods transfer via manager: @{support_user}\n\n"
-            "💡 <i>Choose an action below 👇</i>"
+            "1️⃣ <b>Automated deals with NFTs and gifts</b>\n"
+            "2️⃣ 🛡 <b>Complete protection for both parties</b>\n"
+            "3️⃣ 🌐 <b>Referral program — 50% of fee</b>\n"
+            f"4️⃣ 📦 <b>Goods transfer via manager:</b>{mgr_str}\n\n"
+            "💡 <i>Choose an action below</i> 👇"
         )
     return (
-        "💼 <b>Добро пожаловать в FunPayDeals</b> 🤝\n\n"
+        "💼 <b>Добро пожаловать в FunPayDeals</b>\n\n"
         "⚡️ <b>Ваш надёжный P2P-гарант:</b>\n"
-        "1️⃣ Автоматические сделки с NFT и подарками\n"
-        "2️⃣ 🛡 Полная защита обеих сторон\n"
-        "3️⃣ 🌐 Реферальная программа — 50% от комиссии\n"
-        f"4️⃣ 📦 Передача товаров через менеджера: @{support_user}\n\n"
-        "💡 <i>Выберите действие ниже 👇</i>"
+        "1️⃣ <b>Автоматические сделки с NFT и подарками</b>\n"
+        "2️⃣ 🛡 <b>Полная защита обеих сторон</b>\n"
+        "3️⃣ 🌐 <b>Реферальная программа — 50% от комиссии</b>\n"
+        f"4️⃣ 📦 <b>Передача товаров через менеджера:</b>{mgr_str}\n\n"
+        "💡 <i>Выберите действие ниже</i> 👇"
     )
 
 
@@ -2151,11 +2152,11 @@ async def show_profile(callback: CallbackQuery):
     if lang == "en":
         caption = (
             f"👤 <b>User Profile — FunPayDeals</b>\n\n"
-            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-            f"👤 <b>Username:</b> {username_str}\n"
-            f"📅 <b>Registration date:</b> <b>{reg_date}</b>\n"
-            f"📈 <b>Completed deals:</b> <b>{completed}</b>\n"
-            f"👥 <b>Referrals:</b> <b>{ref_count}</b> users invited"
+            f"🆔 ID: <code>{user_id}</code>\n"
+            f"👤 Username: {username_str}\n"
+            f"📅 Registration date: {reg_date}\n"
+            f"📈 Completed deals: {completed}\n"
+            f"👥 Referrals: {ref_count} users invited"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -2167,11 +2168,11 @@ async def show_profile(callback: CallbackQuery):
     else:
         caption = (
             f"👤 <b>Профиль пользователя — FunPayDeals</b>\n\n"
-            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-            f"👤 <b>Юзернейм:</b> {username_str}\n"
-            f"📅 <b>Дата регистрации:</b> <b>{reg_date}</b>\n"
-            f"📈 <b>Завершённых сделок:</b> <b>{completed}</b>\n"
-            f"👥 <b>Рефералы:</b> <b>{ref_count}</b> чел. приглашено"
+            f"🆔 ID: <code>{user_id}</code>\n"
+            f"👤 Юзернейм: {username_str}\n"
+            f"📅 Дата регистрации: {reg_date}\n"
+            f"📈 Завершённых сделок: {completed}\n"
+            f"👥 Рефералы: {ref_count} чел. приглашено"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[

@@ -104,11 +104,6 @@ class CreateDealStates(StatesGroup):
     waiting_for_nft_link = State()
 
 
-# Машина состояний для отзыва
-class ReviewStates(StatesGroup):
-    waiting_for_review = State()
-
-
 # Машина состояний для реквизитов
 class RequisiteStates(StatesGroup):
     waiting_for_requisite_value = State()
@@ -148,7 +143,6 @@ def get_main_menu_keyboard(support_user: str, lang: str = "ru") -> InlineKeyboar
                     InlineKeyboardButton(text="👤 Profile", callback_data="profile"),
                 ],
                 [
-                    InlineKeyboardButton(text="💬 Reviews", callback_data="reviews"),
                     InlineKeyboardButton(text="🌐 Language / Язык", callback_data="lang"),
                 ],
                 [
@@ -171,7 +165,6 @@ def get_main_menu_keyboard(support_user: str, lang: str = "ru") -> InlineKeyboar
                 InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
             ],
             [
-                InlineKeyboardButton(text="💬 Отзывы", callback_data="reviews"),
                 InlineKeyboardButton(text="🌐 Язык / Lang", callback_data="lang"),
             ],
             [
@@ -341,14 +334,10 @@ def get_buyer_deal_keyboard(deal_id: str, support_user: str, is_creator: bool = 
 
 
 def get_deal_completed_keyboard(deal_id: str, lang: str = "ru") -> InlineKeyboardMarkup:
-    """Клавиатура после завершения сделки: оставить отзыв или в меню."""
-    review_text = "💬 Leave Review" if lang == "en" else "💬 Оставить отзыв"
-    skip_text = "❌ Skip Review" if lang == "en" else "❌ Пропустить отзыв"
+    """Клавиатура после завершения сделки: кнопка возврата в меню."""
     menu_text = "◀️ Main Menu" if lang == "en" else "◀️ Главное меню"
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=review_text, callback_data=f"leave_review_{deal_id}")],
-            [InlineKeyboardButton(text=skip_text, callback_data=f"skip_review_{deal_id}")],
             [InlineKeyboardButton(text=menu_text, callback_data="back_to_menu")],
         ]
     )
@@ -1090,29 +1079,25 @@ async def pay_deal_handler(callback: CallbackQuery):
         if lang == "en":
             comp_buyer = (
                 f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
-                f"Thank you for trusting us ❤️\n\n"
-                f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+                f"Thank you for trusting us ❤️"
             )
         else:
             comp_buyer = (
                 f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
-                f"Спасибо за доверие ❤️\n\n"
-                f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим впечатлением о работе сервиса кнопкой ниже:"
+                f"Спасибо за доверие ❤️"
             )
 
         if seller_lang == "en":
             comp_seller = (
                 f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
                 f"💰 Payout of <b>{payout:.2f} {curr['code']}</b> credited to your balance.\n\n"
-                f"Thank you for trusting us ❤️\n\n"
-                f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+                f"Thank you for trusting us ❤️"
             )
         else:
             comp_seller = (
                 f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
                 f"💰 Средства в размере <b>{payout:.2f} {curr['code']}</b> зачислены на ваш баланс.\n\n"
-                f"Спасибо за доверие ❤️\n\n"
-                f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим впечатлением о работе сервиса кнопкой ниже:"
+                f"Спасибо за доверие ❤️"
             )
 
         try:
@@ -1367,19 +1352,17 @@ async def finish_deal_handler(callback: CallbackQuery):
     seller_lang = await db.get_user_language(seller_id) if seller_id else "ru"
     buyer_lang = await db.get_user_language(buyer_id) if buyer_id else "ru"
 
-    # 1. Продавцу (с предложением оставить отзыв)
+    # 1. Продавцу
     if seller_id:
         comp_seller = (
             f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
             f"💰 Payout of <b>{payout:.2f} {curr['code']}</b> credited to your balance.\n\n"
-            f"Thank you for trusting us ❤️\n\n"
-            f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+            f"Thank you for trusting us ❤️"
             if seller_lang == "en"
             else
             f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
             f"💰 Средства в размере <b>{payout:.2f} {curr['code']}</b> зачислены на ваш баланс.\n\n"
-            f"Спасибо за доверие ❤️\n\n"
-            f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим мнением о работе сервиса кнопкой ниже:"
+            f"Спасибо за доверие ❤️"
         )
         try:
             await callback.bot.send_message(
@@ -1391,16 +1374,14 @@ async def finish_deal_handler(callback: CallbackQuery):
         except Exception as e:
             logger.warning(f"Не удалось отправить уведомление продавцу {seller_id}: {e}")
 
-    # 2. Покупателю (с предложением оставить отзыв)
+    # 2. Покупателю
     comp_buyer = (
         f"🎉 <b>Deal #{deal_id} successfully completed!</b>\n\n"
-        f"Thank you for trusting us ❤️\n\n"
-        f"💬 <b>Leave a review:</b> please share your impression about our service using the button below:"
+        f"Thank you for trusting us ❤️"
         if buyer_lang == "en"
         else
         f"🎉 <b>Сделка #{deal_id} успешно завершена!</b>\n\n"
-        f"Спасибо за доверие ❤️\n\n"
-        f"💬 <b>Оставьте отзыв:</b> вы можете поделиться своим мнением о работе сервиса кнопкой ниже:"
+        f"Спасибо за доверие ❤️"
     )
     try:
         await callback.message.edit_text(
@@ -1416,76 +1397,6 @@ async def finish_deal_handler(callback: CallbackQuery):
         )
 
     await callback.answer()
-
-
-# ------------------ Оставить или пропустить отзыв о сделке ------------------
-
-@dp.callback_query(F.data.startswith("skip_review_"))
-async def skip_review_handler(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    lang = await db.get_user_language(callback.from_user.id)
-    alert = "Review skipped." if lang == "en" else "Отзыв пропущен."
-    await callback.answer(alert)
-
-    text = get_welcome_text(SUPPORT_USERNAME, lang=lang)
-    kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang)
-    try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
-
-
-@dp.callback_query(F.data.startswith("leave_review_"))
-async def leave_review_handler(callback: CallbackQuery, state: FSMContext):
-    deal_id = callback.data.replace("leave_review_", "").strip()
-    await state.update_data(review_deal_id=deal_id)
-    lang = await db.get_user_language(callback.from_user.id)
-
-    if lang == "en":
-        text = (
-            "✍️ <b>Leave a Review</b>\n\n"
-            "Write your review about the escrow service and deal in response to this message:"
-        )
-    else:
-        text = (
-            "✍️ <b>Оставить отзыв о сделке</b>\n\n"
-            "Напишите ваш отзыв о сервисе и сделке ответным сообщением в этот чат:"
-        )
-    cancel_kb = get_back_keyboard(lang)
-    try:
-        await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
-    except Exception:
-        await callback.message.answer(text, reply_markup=cancel_kb, parse_mode="HTML")
-    await state.set_state(ReviewStates.waiting_for_review)
-    await callback.answer()
-
-
-@dp.message(ReviewStates.waiting_for_review)
-async def process_review_text(message: Message, state: FSMContext):
-    data = await state.get_data()
-    deal_id = data.get("review_deal_id", "unknown")
-    user_id = message.from_user.id
-    review_text = message.text.strip()
-    lang = await db.get_user_language(user_id)
-    await state.clear()
-
-    await db.add_review(user_id, deal_id, review_text)
-
-    if lang == "en":
-        thanks_text = (
-            "❤️ <b>Thank you for your review!</b>\n\n"
-            "Your feedback has been successfully saved. We appreciate your trust!"
-        )
-    else:
-        thanks_text = (
-            "❤️ <b>Спасибо за ваш отзыв!</b>\n\n"
-            "Ваш отзыв успешно сохранён. Спасибо за доверие к нашему сервису!"
-        )
-    await message.answer(thanks_text, reply_markup=get_back_keyboard(lang), parse_mode="HTML")
 
 
 # ------------------ Отмена / Отказ от сделки («❌ Отказаться от сделки») ------------------
@@ -2047,9 +1958,6 @@ async def show_my_deals(callback: CallbackQuery):
 
                 cn_text = f"❌ Cancel #{d['deal_id']}" if lang == "en" else f"❌ Отказаться #{d['deal_id']}"
                 buttons.append([InlineKeyboardButton(text=cn_text, callback_data=f"cancel_deal_{d['deal_id']}")])
-            elif d["status"] == "completed":
-                rev_text = f"💬 Review #{d['deal_id']}" if lang == "en" else f"💬 Оставить отзыв #{d['deal_id']}"
-                buttons.append([InlineKeyboardButton(text=rev_text, callback_data=f"leave_review_{d['deal_id']}")])
 
         back_text = "◀️ Back to menu" if lang == "en" else "◀️ Назад в меню"
         buttons.append([InlineKeyboardButton(text=back_text, callback_data="back_to_menu")])
@@ -2676,42 +2584,6 @@ async def show_referrals(callback: CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
-
-
-# ------------------ Раздел «Отзывы» ------------------
-
-@dp.callback_query(F.data == "reviews")
-async def show_reviews(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    lang = await db.get_user_language(user_id)
-
-    if lang == "en":
-        text = (
-            "💬 <b>Reviews:</b>\n\n"
-            f"You can check verified reviews or leave your feedback directly through our manager — @{SUPPORT_USERNAME}, or right after completing a deal in the bot."
-        )
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Contact Manager ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
-                [InlineKeyboardButton(text="◀️ Back to menu", callback_data="back_to_menu")],
-            ]
-        )
-    else:
-        text = (
-            "💬 <b>Отзывы о сервисе:</b>\n\n"
-            f"Ознакомиться с отзывами или оставить свой отзыв вы можете напрямую через нашего менеджера — @{SUPPORT_USERNAME}, а также после завершения сделки в боте."
-        )
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Написать менеджеру ↗", url=f"https://t.me/{SUPPORT_USERNAME}")],
-                [InlineKeyboardButton(text="◀️ Назад в меню", callback_data="back_to_menu")],
-            ]
-        )
-    try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
         await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 

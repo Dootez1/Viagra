@@ -64,7 +64,7 @@
    ```env
    BOT_TOKEN=YOUR_BOT_TOKEN_HERE
    SUPPORT_USERNAME=FunPayDeaIsSupport
-   BOT_USERNAME=FunPayDealsBot
+   BOT_USERNAME=FunpayOfficaIsbot
    ```
 3. Запустите бота:
    ```bash

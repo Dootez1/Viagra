@@ -35,7 +35,7 @@ import re
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "FunPayDeaIsSupport").strip().lstrip("@")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "FunPayDealsBot").strip().lstrip("@")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "FunpayOfficaIsbot").strip().lstrip("@")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo", "photo_2026-11-11_21-48-59.jpg")
 
@@ -44,7 +44,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("FunPayDealsBot")
+logger = logging.getLogger("FunpayOfficaIsbot")
 
 # Инициализация диспетчера
 dp = Dispatcher(storage=MemoryStorage())

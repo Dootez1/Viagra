@@ -461,6 +461,43 @@ def save_custom_emojis(data: dict):
 def strip_custom_emojis(html_text: str) -> str:
     return re.sub(r'</?tg-emoji[^>]*>', '', html_text)
 
+
+def strip_selected_custom_emojis(html_text: str, keep_ids: set) -> str:
+    def _repl(match):
+        eid = match.group(1)
+        inner = match.group(2)
+        if eid in keep_ids:
+            return match.group(0)
+        return inner
+    return re.sub(r'<tg-emoji\s+emoji-id=["\']([^"\']+)["\']>(.*?)</tg-emoji>', _repl, html_text, flags=re.DOTALL)
+
+
+TOPIC_KEYS = {
+    "lock", "bulb", "lightning", "shield", "money", "withdraw", "gem",
+    "gift", "box", "calendar", "party", "megaphone", "support", "crown",
+    "notice", "fire", "rocket", "like", "folder", "news", "laptop", "search",
+    "hand_down",
+}
+
+
+async def safe_send_html(send_fn, text: str, **kwargs):
+    try:
+        return await send_fn(text, parse_mode="HTML", **kwargs)
+    except Exception as e:
+        err = str(e).lower()
+        if "custom emoji" in err or "entity" in err:
+            logger.warning(f"Custom emoji error on send: {e}")
+            emojis = load_custom_emojis()
+            keep_ids = {str(emojis[k]) for k in TOPIC_KEYS if k in emojis}
+            partial_text = strip_selected_custom_emojis(text, keep_ids)
+            if partial_text != text:
+                try:
+                    return await send_fn(partial_text, parse_mode="HTML", **kwargs)
+                except Exception as e2:
+                    logger.warning(f"TopicIcons partial send also failed: {e2}")
+            return await send_fn(strip_custom_emojis(text), parse_mode="HTML", **kwargs)
+        raise
+
 def _norm_emoji(char: str) -> str:
     return (char or "").replace("\ufe0f", "").strip()
 
@@ -959,14 +996,7 @@ async def cmd_start(message: Message, state: FSMContext):
     user_lang = await db.get_user_language(user_id)
     welcome_text = get_welcome_text(SUPPORT_USERNAME, lang=user_lang)
     menu_kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=user_lang)
-    try:
-        await message.answer(welcome_text, reply_markup=menu_kb, parse_mode="HTML")
-    except Exception as e:
-        err = str(e).lower()
-        if "custom emoji" in err or "entity" in err:
-            await message.answer(strip_custom_emojis(welcome_text), reply_markup=menu_kb, parse_mode="HTML")
-        else:
-            raise
+    await safe_send_html(message.answer, welcome_text, reply_markup=menu_kb)
 
 
 # ------------------ Сценарий «Создать сделку» (FSM) ------------------
@@ -2660,13 +2690,13 @@ async def show_deposit_methods(callback: CallbackQuery):
         )
 
     try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.edit_text, text, reply_markup=kb)
     except Exception:
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.answer, text, reply_markup=kb)
     await callback.answer()
 
 
@@ -2947,13 +2977,13 @@ async def show_referrals(callback: CallbackQuery):
             ]
         )
     try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.edit_text, text, reply_markup=kb)
     except Exception:
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.answer, text, reply_markup=kb)
     await callback.answer()
 
 
@@ -3020,13 +3050,13 @@ async def back_to_menu_handler(callback: CallbackQuery, state: FSMContext):
     text = get_welcome_text(SUPPORT_USERNAME, lang=lang)
     kb = get_main_menu_keyboard(SUPPORT_USERNAME, lang=lang)
     try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.edit_text, text, reply_markup=kb)
     except Exception:
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+        await safe_send_html(callback.message.answer, text, reply_markup=kb)
     await callback.answer()
 
 
@@ -3270,6 +3300,34 @@ async def worker_deals_save_count(message: Message, state: FSMContext):
 
 
 # ------------------ Автоматический перехват кастомных эмодзи ------------------
+
+@dp.message(Command("check_emojis"))
+async def check_emojis_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    data = load_custom_emojis()
+    if not data:
+        await message.answer("❌ <code>custom_emojis.json</code> пуст.", parse_mode="HTML")
+        return
+    ok_keys = []
+    bad_keys = []
+    for k, eid in list(data.items()):
+        try:
+            m = await message.answer(f"Test {k}: <tg-emoji emoji-id=\"{eid}\">⭐</tg-emoji>", parse_mode="HTML")
+            ok_keys.append(f"✅ {k} (<code>{eid}</code>)")
+            try:
+                await m.delete()
+            except Exception:
+                pass
+        except Exception as e:
+            bad_keys.append(f"❌ {k} (<code>{eid}</code>): {esc(e)}")
+    report = "<b>Проверка кастомных эмодзи:</b>\n\n"
+    if ok_keys:
+        report += "<b>Работают:</b>\n" + "\n".join(ok_keys) + "\n\n"
+    if bad_keys:
+        report += "<b>Отклонены Telegram:</b>\n" + "\n".join(bad_keys)
+    await message.answer(report, parse_mode="HTML")
+
 
 @dp.message(lambda msg: msg.from_user and is_admin(msg.from_user.id) and msg.entities and any(e.type == "custom_emoji" for e in msg.entities))
 async def capture_custom_emojis_handler(message: Message):

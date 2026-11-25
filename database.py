@@ -83,11 +83,13 @@ async def init_db():
             pass
 
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS reviews (
+            CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                deal_id TEXT,
-                text TEXT,
+                user_id INTEGER NOT NULL,
+                tx_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                currency TEXT NOT NULL,
+                description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -186,20 +188,30 @@ async def get_user_active_created_deals(user_id: int):
 async def cancel_deal(deal_id: str, user_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "UPDATE deals SET status = 'cancelled' WHERE deal_id = ? AND (creator_id = ? OR buyer_id = ?) AND status IN ('created', 'accepted')",
+            """
+            UPDATE deals SET status = 'cancelled'
+            WHERE deal_id = ?
+              AND (creator_id = ? OR buyer_id = ?)
+              AND status IN ('created', 'accepted')
+              AND COALESCE(gift_sent, 0) = 0
+            """,
             (deal_id, user_id, user_id)
         ) as cursor:
             await db.commit()
             return cursor.rowcount > 0
 
 
-async def accept_deal(deal_id: str, counterpart_id: int):
+async def accept_deal(deal_id: str, counterpart_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE deals SET buyer_id = ?, status = 'accepted' WHERE deal_id = ?",
-            (counterpart_id, deal_id)
-        )
-        await db.commit()
+        async with db.execute(
+            """
+            UPDATE deals SET buyer_id = ?, status = 'accepted'
+            WHERE deal_id = ? AND status = 'created' AND buyer_id IS NULL AND creator_id != ?
+            """,
+            (counterpart_id, deal_id, counterpart_id)
+        ) as cursor:
+            await db.commit()
+            return cursor.rowcount > 0
 
 
 async def update_deal_buyer(deal_id: str, buyer_id: int):
@@ -211,23 +223,27 @@ async def update_deal_buyer(deal_id: str, buyer_id: int):
         await db.commit()
 
 
-async def complete_deal(deal_id: str):
+async def complete_deal(deal_id: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM deals WHERE deal_id = ?", (deal_id,)) as cursor:
+        async with db.execute("SELECT * FROM deals WHERE deal_id = ? AND status != 'completed'", (deal_id,)) as cursor:
             deal = await cursor.fetchone()
-            if deal:
-                await db.execute(
-                    "UPDATE deals SET status = 'completed', is_paid = 1, gift_sent = 1 WHERE deal_id = ?",
-                    (deal_id,)
-                )
-                # Увеличиваем счетчик завершенных сделок для обеих сторон
-                creator_id = deal["creator_id"]
-                buyer_id = deal["buyer_id"]
-                await db.execute("UPDATE users SET completed_deals = completed_deals + 1 WHERE user_id = ?", (creator_id,))
-                if buyer_id and buyer_id != creator_id:
-                    await db.execute("UPDATE users SET completed_deals = completed_deals + 1 WHERE user_id = ?", (buyer_id,))
-                await db.commit()
+            if not deal:
+                return False
+            async with db.execute(
+                "UPDATE deals SET status = 'completed', is_paid = 1, gift_sent = 1 WHERE deal_id = ? AND status != 'completed'",
+                (deal_id,)
+            ) as upd:
+                if upd.rowcount == 0:
+                    return False
+            # Увеличиваем счетчик завершенных сделок для обеих сторон
+            creator_id = deal["creator_id"]
+            buyer_id = deal["buyer_id"]
+            await db.execute("UPDATE users SET completed_deals = completed_deals + 1 WHERE user_id = ?", (creator_id,))
+            if buyer_id and buyer_id != creator_id:
+                await db.execute("UPDATE users SET completed_deals = completed_deals + 1 WHERE user_id = ?", (buyer_id,))
+            await db.commit()
+            return True
 
 
 async def get_referral_stats(user_id: int):
@@ -243,13 +259,24 @@ async def mark_gift_sent(deal_id: str):
         await db.commit()
 
 
-async def add_review(user_id: int, deal_id: str, text: str):
+async def add_transaction(user_id: int, tx_type: str, amount: float, currency: str, description: str = ""):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO reviews (user_id, deal_id, text) VALUES (?, ?, ?)",
-            (user_id, deal_id, text)
+            "INSERT INTO transactions (user_id, tx_type, amount, currency, description) VALUES (?, ?, ?, ?, ?)",
+            (user_id, tx_type, round(float(amount), 2), currency.upper(), description)
         )
         await db.commit()
+
+
+async def get_user_transactions(user_id: int, limit: int = 15):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
 
 
 async def update_user_requisite(user_id: int, req_type: str, value: str):
@@ -277,10 +304,14 @@ async def get_user_language(user_id: int) -> str:
             return "ru"
 
 
-async def mark_deal_paid(deal_id: str):
+async def mark_deal_paid(deal_id: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE deals SET is_paid = 1 WHERE deal_id = ?", (deal_id,))
-        await db.commit()
+        async with db.execute(
+            "UPDATE deals SET is_paid = 1 WHERE deal_id = ? AND COALESCE(is_paid, 0) = 0 AND status IN ('created', 'accepted')",
+            (deal_id,)
+        ) as cursor:
+            await db.commit()
+            return cursor.rowcount > 0
 
 
 def get_balance_column(curr_key: str) -> str:

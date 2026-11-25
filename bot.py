@@ -461,10 +461,14 @@ def save_custom_emojis(data: dict):
 def strip_custom_emojis(html_text: str) -> str:
     return re.sub(r'</?tg-emoji[^>]*>', '', html_text)
 
+def _norm_emoji(char: str) -> str:
+    return (char or "").replace("\ufe0f", "").strip()
+
+
 async def init_custom_emoji_packs(bot: Bot):
     """
-    Автоматически сканирует паки, указанные пользователем:
-    - TopicIcons (замок, лампочка, молния, щит)
+    Автоматически сканирует паки:
+    - TopicIcons (https://t.me/addemoji/TopicIcons) + официальные Topic Icons
     - GeometryDashPusab (цифры 1, 2, 3, 4)
     - NewsEmoji (глобус)
     - TgAndroidIcons (профиль, календарь, график, коробка)
@@ -473,18 +477,36 @@ async def init_custom_emoji_packs(bot: Bot):
     data = load_custom_emojis()
     updated = False
 
-    # 1. Сканирование паков по названиям
+    topic_map = {
+        "💼": "lock",
+        "🔒": "lock",
+        "👝": "lock",
+        "💡": "bulb",
+        "⚡": "lightning",
+        "🛡": "shield",
+        "💰": "money",
+        "💸": "withdraw",
+        "💎": "gem",
+        "🎁": "gift",
+        "📅": "calendar",
+        "🥳": "party",
+        "📣": "megaphone",
+        "🛟": "support",
+        "👑": "crown",
+        "❕": "notice",
+        "❗": "notice",
+        "🔥": "fire",
+        "🚀": "rocket",
+        "👍": "like",
+        "📁": "folder",
+        "📰": "news",
+        "💻": "laptop",
+        "🔍": "search",
+    }
+
+    # 1. Сканирование TopicIcons и остальных паков по названиям
     packs = [
-        ("TopicIcons", {
-            "💼": "lock",
-            "🔒": "lock",
-            "👝": "lock",
-            "💡": "bulb",
-            "⚡": "lightning",
-            "⚡️": "lightning",
-            "🛡": "shield",
-            "🛡️": "shield"
-        }),
+        ("TopicIcons", topic_map),
         ("NewsEmoji", {
             "🌐": "globe"
         }),
@@ -507,12 +529,13 @@ async def init_custom_emoji_packs(bot: Bot):
             logger.info(f"Пак '{pack_name}' успешно получен, стикеров: {len(s_set.stickers)}")
             for s in s_set.stickers:
                 eid = s.custom_emoji_id
-                char = getattr(s, "emoji", "")
-                if char in mapping:
+                char = _norm_emoji(getattr(s, "emoji", ""))
+                if char in mapping and eid:
                     target = mapping[char]
-                    if target not in data:
-                        data[target] = eid
-                        updated = True
+                    if pack_name == "TopicIcons" or target not in data:
+                        if data.get(target) != eid:
+                            data[target] = eid
+                            updated = True
         except Exception as e:
             logger.warning(f"Ошибка загрузки пака '{pack_name}': {e}")
 
@@ -520,10 +543,9 @@ async def init_custom_emoji_packs(bot: Bot):
     try:
         gd_set = await bot.get_sticker_set(name="GeometryDashPusab")
         logger.info(f"Пак GeometryDashPusab получен, стикеров: {len(gd_set.stickers)}")
-        # Ищем стикеры с цифрами или символом abc/🔤
         abc_stickers = []
         for idx, s in enumerate(gd_set.stickers):
-            char = getattr(s, "emoji", "")
+            char = _norm_emoji(getattr(s, "emoji", ""))
             if char in ("1", "1️⃣"):
                 data["num1"] = s.custom_emoji_id
                 updated = True
@@ -539,9 +561,7 @@ async def init_custom_emoji_packs(bot: Bot):
             elif char in ("🔤", "abc", ""):
                 abc_stickers.append((idx, s.custom_emoji_id))
 
-        # Если цифры были привязаны к 🔤
         if ("num1" not in data or "num2" not in data) and len(abc_stickers) >= 4:
-            # Находим блок цифр
             for i, (idx, eid) in enumerate(abc_stickers):
                 if i == 0 and "num1" not in data:
                     data["num1"] = eid
@@ -558,30 +578,30 @@ async def init_custom_emoji_packs(bot: Bot):
     except Exception as e:
         logger.warning(f"Ошибка загрузки GeometryDashPusab: {e}")
 
-    # 3. Topic icons fallback (официальный Telegram)
+    # 3. Topic icons fallback (официальный системный набор Telegram)
     try:
         topic_stickers = await bot.get_forum_topic_icon_stickers()
         for s in topic_stickers:
             eid = s.custom_emoji_id
-            char = getattr(s, "emoji", "")
-            if char in ("💼", "🔒", "👝") and "lock" not in data:
-                data["lock"] = eid
-                updated = True
-            elif char in ("💡", "🔦") and "bulb" not in data:
-                data["bulb"] = eid
-                updated = True
-            elif char in ("⚡", "⚡️") and "lightning" not in data:
-                data["lightning"] = eid
-                updated = True
-            elif char in ("🛡", "🛡️") and "shield" not in data:
-                data["shield"] = eid
-                updated = True
+            char = _norm_emoji(getattr(s, "emoji", ""))
+            if char in topic_map and eid:
+                target = topic_map[char]
+                if target not in data:
+                    data[target] = eid
+                    updated = True
     except Exception as e:
         logger.debug(f"Topic icons fetch error: {e}")
 
+    if "box" not in data and "gift" in data:
+        data["box"] = data["gift"]
+        updated = True
+    if "lock" not in data and "crown" in data:
+        data["lock"] = data["crown"]
+        updated = True
+
     if updated:
         save_custom_emojis(data)
-        logger.info(f"Кастомные эмодзи сохранены: {list(data.keys())}")
+    logger.info(f"Активные кастомные эмодзи ({len(data)}): {list(data.keys())}")
 
 def get_emoji(name: str, fallback: str) -> str:
     emojis = load_custom_emojis()
@@ -1889,31 +1909,36 @@ async def show_balance(callback: CallbackQuery):
     stars = user.get("balance_stars", 0.0)
     completed = user.get("completed_deals", 0)
 
+    e_money = get_emoji("money", "💰")
+    e_gem = get_emoji("gem", "💎")
+    e_chart = get_emoji("chart", "📈")
+    e_notice = get_emoji("notice", "❗️")
+
     if lang == "en":
         text = (
-            "💰 <b>Balance:</b>\n\n"
+            f"{e_money} <b>Balance:</b>\n\n"
             f"🇷🇺 RUB — {rub:.1f}\n"
             f"🇺🇦 UAH — {uah:.1f}\n"
             f"🇧🇾 BYN — {byn:.1f}\n"
             f"🇰🇿 KZT — {kzt:.1f}\n"
-            f"💎 GRAM — {gram:.1f}\n"
+            f"{e_gem} GRAM — {gram:.1f}\n"
             f"💵 USDT — {usdt:.1f}\n"
             f"⭐ Stars — {stars:.1f}\n\n"
-            f"📈 Completed deals: {completed}\n\n"
-            "❗️ <i>To withdraw funds, at least 2 completed deals are required</i>"
+            f"{e_chart} Completed deals: {completed}\n\n"
+            f"{e_notice} <i>To withdraw funds, at least 2 completed deals are required</i>"
         )
     else:
         text = (
-            "💰 <b>Баланс:</b>\n\n"
+            f"{e_money} <b>Баланс:</b>\n\n"
             f"🇷🇺 RUB — {rub:.1f}\n"
             f"🇺🇦 UAH — {uah:.1f}\n"
             f"🇧🇾 BYN — {byn:.1f}\n"
             f"🇰🇿 KZT — {kzt:.1f}\n"
-            f"💎 GRAM — {gram:.1f}\n"
+            f"{e_gem} GRAM — {gram:.1f}\n"
             f"💵 USDT — {usdt:.1f}\n"
             f"⭐ Stars — {stars:.1f}\n\n"
-            f"📈 Завершённых сделок: {completed}\n\n"
-            "❗️ <i>Для вывода средств необходимо минимум 2 завершённые сделки</i>"
+            f"{e_chart} Завершённых сделок: {completed}\n\n"
+            f"{e_notice} <i>Для вывода средств необходимо минимум 2 завершённые сделки</i>"
         )
 
     try:
